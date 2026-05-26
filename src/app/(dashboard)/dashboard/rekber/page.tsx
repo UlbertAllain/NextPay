@@ -89,19 +89,32 @@ export default function UserRekberPage() {
                         {formatRupiah(item.totalAmount)}
                       </p>
 
-                      {item.status === "holding_fund" ? (
-                        <div className="mt-3 flex gap-2">
-                          <Button
-                            variant="secondary"
-                            onClick={() => handleDispute(item.id)}
-                          >
-                            Dispute
-                          </Button>
-                          <Button onClick={() => handleConfirm(item.id)}>
-                            Konfirmasi Selesai
-                          </Button>
-                        </div>
-                      ) : null}
+                           {item.status === "holding_fund" ? (
+                            <p className="text-sm text-slate-500">
+                              Dana sudah ditahan. Menunggu seller menyerahkan item.
+                            </p>
+                          ) : null}
+
+                          {item.status === "waiting_confirmation" ? (
+                            <div className="flex gap-2">
+                              <Button
+                                variant="secondary"
+                                onClick={() => handleDispute(item.id)}
+                              >
+                                Dispute
+                              </Button>
+
+                              <Button onClick={() => handleConfirm(item.id)}>
+                                Konfirmasi Selesai
+                              </Button>
+                            </div>
+                          ) : null}
+
+                          {item.status === "dispute" ? (
+                            <p className="text-sm text-orange-600">
+                              Transaksi sedang dalam dispute dan menunggu keputusan admin.
+                            </p>
+                          ) : null}
                     </div>
                   </div>
                 </div>

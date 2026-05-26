@@ -2,6 +2,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getDocs,
   orderBy,
   query,
@@ -13,8 +14,8 @@ import {
 import { db } from "@/lib/firebase/client";
 import { COLLECTIONS } from "@/constants/collections";
 import { RekberTransaction } from "@/types/rekber";
-import { getDoc } from "firebase/firestore";
 import { addBalanceToUser } from "@/services/wallet-service";
+import { createNotification } from "@/services/notification-service";
 
 export type CreateRekberInput = {
   buyerId: string;
@@ -39,14 +40,12 @@ export async function createRekberTransaction(input: CreateRekberInput) {
     fee: input.fee,
     totalAmount: input.amount + input.fee,
     status: "waiting_payment",
+    paymentStatus: "unpaid",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
 
-  const docRef = await addDoc(
-    collection(db, COLLECTIONS.REKBER),
-    payload
-  );
+  const docRef = await addDoc(collection(db, COLLECTIONS.REKBER), payload);
 
   return {
     id: docRef.id,
@@ -65,9 +64,24 @@ export async function getRekberByBuyerId(buyerId: string) {
 
   const snapshot = await getDocs(q);
 
-  return snapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
+  return snapshot.docs.map((document) => ({
+    id: document.id,
+    ...document.data(),
+  })) as RekberTransaction[];
+}
+
+export async function getRekberBySellerId(sellerId: string) {
+  const q = query(
+    collection(db, COLLECTIONS.REKBER),
+    where("sellerId", "==", sellerId),
+    orderBy("createdAt", "desc")
+  );
+
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs.map((document) => ({
+    id: document.id,
+    ...document.data(),
   })) as RekberTransaction[];
 }
 
@@ -79,16 +93,114 @@ export async function getAllRekberTransactions() {
 
   const snapshot = await getDocs(q);
 
-  return snapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
+  return snapshot.docs.map((document) => ({
+    id: document.id,
+    ...document.data(),
   })) as RekberTransaction[];
 }
 
 export async function markRekberAsPaid(rekberId: string) {
-  await updateDoc(doc(db, COLLECTIONS.REKBER, rekberId), {
+  const rekberRef = doc(db, COLLECTIONS.REKBER, rekberId);
+  const snapshot = await getDoc(rekberRef);
+
+  if (!snapshot.exists()) {
+    throw new Error("Transaksi rekber tidak ditemukan");
+  }
+
+  const rekber = {
+    id: snapshot.id,
+    ...snapshot.data(),
+  } as RekberTransaction;
+
+  if (rekber.status !== "waiting_payment") {
+    throw new Error("Rekber tidak berada di status waiting_payment");
+  }
+
+  await updateDoc(rekberRef, {
     status: "holding_fund",
+    paymentStatus: "paid",
+    paidAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+  });
+
+  await createNotification({
+    userId: rekber.buyerId,
+    title: "Pembayaran Rekber Berhasil",
+    message: `Dana untuk ${rekber.itemName} sudah ditahan oleh NextPay.`,
+    type: "rekber",
+  });
+
+  if (rekber.sellerId) {
+    await createNotification({
+      userId: rekber.sellerId,
+      title: "Rekber Baru Dibayar",
+      message: `Buyer sudah membayar ${rekber.itemName}. Silakan kirim item.`,
+      type: "rekber",
+    });
+  }
+}
+
+export async function assignSellerToRekber(
+  rekberId: string,
+  sellerId: string
+) {
+  const rekberRef = doc(db, COLLECTIONS.REKBER, rekberId);
+  const snapshot = await getDoc(rekberRef);
+
+  if (!snapshot.exists()) {
+    throw new Error("Transaksi rekber tidak ditemukan");
+  }
+
+  const rekber = {
+    id: snapshot.id,
+    ...snapshot.data(),
+  } as RekberTransaction;
+
+  await updateDoc(rekberRef, {
+    sellerId,
+    updatedAt: serverTimestamp(),
+  });
+
+  await createNotification({
+    userId: sellerId,
+    title: "Kamu Ditugaskan ke Rekber",
+    message: `Admin menugaskan kamu sebagai seller untuk ${rekber.itemName}.`,
+    type: "rekber",
+  });
+}
+
+export async function markRekberDelivered(rekberId: string) {
+  const rekberRef = doc(db, COLLECTIONS.REKBER, rekberId);
+  const snapshot = await getDoc(rekberRef);
+
+  if (!snapshot.exists()) {
+    throw new Error("Transaksi rekber tidak ditemukan");
+  }
+
+  const rekber = {
+    id: snapshot.id,
+    ...snapshot.data(),
+  } as RekberTransaction;
+
+  if (rekber.status !== "holding_fund") {
+    throw new Error("Rekber belum bisa ditandai dikirim");
+  }
+
+  if (!rekber.sellerId) {
+    throw new Error("Seller belum di-assign");
+  }
+
+  await updateDoc(rekberRef, {
+    status: "waiting_confirmation",
+    deliveredAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+
+  await createNotification({
+    userId: rekber.buyerId,
+    title: "Seller Sudah Mengirim Item",
+    message: `${rekber.itemName} sudah ditandai dikirim oleh seller. Silakan cek dan konfirmasi.`,
+    type: "rekber",
   });
 }
 
@@ -109,8 +221,13 @@ export async function confirmRekberCompleted(rekberId: string) {
     return;
   }
 
+  if (rekber.status !== "waiting_confirmation" && rekber.status !== "dispute") {
+    throw new Error("Rekber belum bisa diselesaikan");
+  }
+
   await updateDoc(rekberRef, {
     status: "completed",
+    completedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
 
@@ -121,21 +238,62 @@ export async function confirmRekberCompleted(rekberId: string) {
       description: `Release dana rekber ${rekber.invoice}`,
       referenceId: rekber.id,
     });
+
+    await createNotification({
+      userId: rekber.sellerId,
+      title: "Dana Rekber Masuk",
+      message: `Dana ${rekber.itemName} sudah masuk ke wallet.`,
+      type: "rekber",
+    });
   }
-}
-export async function assignSellerToRekber(
-  rekberId: string,
-  sellerId: string
-) {
-  await updateDoc(doc(db, COLLECTIONS.REKBER, rekberId), {
-    sellerId,
-    updatedAt: serverTimestamp(),
+
+  await createNotification({
+    userId: rekber.buyerId,
+    title: "Rekber Selesai",
+    message: `Transaksi ${rekber.itemName} sudah selesai.`,
+    type: "rekber",
   });
 }
 
 export async function disputeRekber(rekberId: string) {
-  await updateDoc(doc(db, COLLECTIONS.REKBER, rekberId), {
+  const rekberRef = doc(db, COLLECTIONS.REKBER, rekberId);
+  const snapshot = await getDoc(rekberRef);
+
+  if (!snapshot.exists()) {
+    throw new Error("Transaksi rekber tidak ditemukan");
+  }
+
+  const rekber = {
+    id: snapshot.id,
+    ...snapshot.data(),
+  } as RekberTransaction;
+
+  if (
+    rekber.status !== "holding_fund" &&
+    rekber.status !== "waiting_confirmation"
+  ) {
+    throw new Error("Rekber belum bisa dispute");
+  }
+
+  await updateDoc(rekberRef, {
     status: "dispute",
+    disputedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+
+  await createNotification({
+    userId: rekber.buyerId,
+    title: "Rekber Masuk Dispute",
+    message: `Transaksi ${rekber.itemName} sedang menunggu keputusan admin.`,
+    type: "rekber",
+  });
+
+  if (rekber.sellerId) {
+    await createNotification({
+      userId: rekber.sellerId,
+      title: "Rekber Masuk Dispute",
+      message: `Transaksi ${rekber.itemName} sedang dalam dispute.`,
+      type: "rekber",
+    });
+  }
 }

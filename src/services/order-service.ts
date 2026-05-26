@@ -21,6 +21,11 @@ export type CreateOrderInput = {
   title: string;
   amount: number;
   adminFee: number;
+
+  gameSlug?: string;
+  targetUserId?: string;
+  serverId?: string;
+  productCode?: string;
 };
 
 export async function getAllOrders() {
@@ -31,9 +36,9 @@ export async function getAllOrders() {
 
   const snapshot = await getDocs(q);
 
-  return snapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
+  return snapshot.docs.map((document) => ({
+    id: document.id,
+    ...document.data(),
   })) as Order[];
 }
 
@@ -46,9 +51,9 @@ export async function getOrdersByUserId(userId: string) {
 
   const snapshot = await getDocs(q);
 
-  return snapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
+  return snapshot.docs.map((document) => ({
+    id: document.id,
+    ...document.data(),
   })) as Order[];
 }
 
@@ -60,12 +65,20 @@ export async function createOrder(input: CreateOrderInput) {
     userId: input.userId,
     type: input.type,
     title: input.title,
+
     amount: input.amount,
     adminFee: input.adminFee,
     totalAmount: input.amount + input.adminFee,
+
     status: "pending_payment",
     paymentStatus: "unpaid",
-    paymentProvider: "tripay",
+    paymentProvider: "mock",
+
+    gameSlug: input.gameSlug ?? null,
+    targetUserId: input.targetUserId ?? null,
+    serverId: input.serverId ?? null,
+    productCode: input.productCode ?? null,
+
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
@@ -89,15 +102,13 @@ export async function createPaymentForOrder(order: Order) {
     amount: order.totalAmount,
   });
 
-  await updateDoc(
-    doc(db, COLLECTIONS.ORDERS, order.id),
-    {
-      paymentReference: payment.reference,
-      paymentCheckoutUrl: payment.checkoutUrl,
-      paymentExpiredAt: payment.expiredAt,
-      updatedAt: serverTimestamp(),
-    }
-  );
+  await updateDoc(doc(db, COLLECTIONS.ORDERS, order.id), {
+    paymentReference: payment.reference,
+    paymentCheckoutUrl: payment.checkoutUrl,
+    paymentExpiredAt: payment.expiredAt,
+    paymentProvider: payment.provider,
+    updatedAt: serverTimestamp(),
+  });
 
   return payment;
 }

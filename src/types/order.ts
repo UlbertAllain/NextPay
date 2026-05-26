@@ -23,18 +23,28 @@ export type Order = {
   userId: string;
   type: OrderType;
   title: string;
+
   amount: number;
   adminFee: number;
   totalAmount: number;
+
   status: OrderStatus;
   paymentStatus: PaymentStatus;
-  paymentProvider: "tripay";
+  paymentProvider: "tripay" | "mock";
+
   paymentReference?: string;
   paymentCheckoutUrl?: string;
   paymentExpiredAt?: string;
+
+  gameSlug?: string;
+  targetUserId?: string;
+  serverId?: string;
+  productCode?: string;
+
   providerReference?: string;
-fulfilledBy?: "mock" | "digiflazz";
-fulfilledAt?: Date;
+  fulfilledBy?: "mock" | "digiflazz";
+  fulfilledAt?: Date;
+
   createdAt: Date;
   updatedAt: Date;
 };

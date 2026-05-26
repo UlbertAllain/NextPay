@@ -4,6 +4,7 @@ import {
   serverTimestamp,
   updateDoc,
 } from "firebase/firestore";
+
 import { createAuditLog } from "@/services/audit-log-service";
 import { db } from "@/lib/firebase/client";
 import { COLLECTIONS } from "@/constants/collections";
@@ -32,6 +33,14 @@ export async function fulfillTopupOrder(orderId: string) {
     throw new Error("Payment belum paid");
   }
 
+  if (!order.productCode) {
+    throw new Error("Product code order belum tersedia");
+  }
+
+  if (!order.targetUserId) {
+    throw new Error("Target User ID belum tersedia");
+  }
+
   if (order.status === "success") {
     return {
       status: "success",
@@ -43,8 +52,9 @@ export async function fulfillTopupOrder(orderId: string) {
 
   const result = await provider.createTopup({
     orderId: order.id,
-    userId: order.userId,
-    productCode: order.title,
+    userId: order.targetUserId,
+    serverId: order.serverId,
+    productCode: order.productCode,
   });
 
   await updateDoc(orderRef, {
@@ -56,21 +66,24 @@ export async function fulfillTopupOrder(orderId: string) {
   });
 
   await createAuditLog({
-  action: "TOPUP_FULFILLED",
-  targetCollection: "orders",
-  targetId: order.id,
-  metadata: {
-    providerReference: result.reference,
-    provider: result.provider,
-  },
-});
+    action: "TOPUP_FULFILLED",
+    targetCollection: "orders",
+    targetId: order.id,
+    metadata: {
+      providerReference: result.reference,
+      provider: result.provider,
+      productCode: order.productCode,
+      targetUserId: order.targetUserId,
+      serverId: order.serverId ?? null,
+    },
+  });
 
-await createNotification({
-  userId: order.userId,
-  title: "Topup Berhasil",
-  message: `${order.title} berhasil diproses.`,
-  type: "topup",
-});
+  await createNotification({
+    userId: order.userId,
+    title: "Topup Berhasil",
+    message: `${order.title} berhasil diproses.`,
+    type: "topup",
+  });
 
   return result;
 }

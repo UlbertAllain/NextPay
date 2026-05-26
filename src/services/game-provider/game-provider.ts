@@ -1,18 +1,17 @@
 export type CreateTopupPayload = {
   orderId: string;
   userId: string;
-  serverId?: string;
+  serverId?: string | null;
   productCode: string;
 };
 
-export type TopupResponse = {
-  provider: "mock" | "digiflazz";
+export type CreateTopupResponse = {
   reference: string;
-  status: "success" | "processing" | "failed";
+  status: "success" | "failed" | "processing";
+  provider: "mock" | "digiflazz";
+  message?: string;
 };
 
 export interface GameProvider {
-  createTopup(
-    payload: CreateTopupPayload
-  ): Promise<TopupResponse>;
+  createTopup(payload: CreateTopupPayload): Promise<CreateTopupResponse>;
 }

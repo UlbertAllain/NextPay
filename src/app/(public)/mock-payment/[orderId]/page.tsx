@@ -1,7 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useParams } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 
 import {
   doc,
@@ -10,6 +9,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase/client";
+import { fulfillTopupOrder } from "@/services/fulfillment-service";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,19 +23,18 @@ export default function MockPaymentPage() {
 
   async function simulateSuccessPayment() {
     try {
-      await updateDoc(
-        doc(db, "orders", params.orderId),
-        {
-          paymentStatus: "paid",
-          status: "processing",
-          updatedAt: serverTimestamp(),
-        }
-      );
+      await updateDoc(doc(db, "orders", params.orderId), {
+        paymentStatus: "paid",
+        status: "processing",
+        updatedAt: serverTimestamp(),
+      });
 
-      router.push("/dashboard/orders");
+      await fulfillTopupOrder(params.orderId);
+
+      router.push(`/dashboard/orders/${params.orderId}`);
     } catch (error) {
       console.error(error);
-      alert("Gagal update payment");
+      alert("Gagal update payment atau fulfillment");
     }
   }
 

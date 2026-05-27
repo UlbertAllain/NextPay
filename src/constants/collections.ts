@@ -7,4 +7,5 @@ export const COLLECTIONS = {
   PAYMENTS: "payments",
   WITHDRAWALS: "withdrawals",
   AUDIT_LOGS: "audit_logs",
+  ACCOUNT_LISTINGS: "account_listings",
 } as const;

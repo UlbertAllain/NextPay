@@ -19,31 +19,36 @@ import { createNotification } from "@/services/notification-service";
 
 export type CreateRekberInput = {
   buyerId: string;
+  sellerId?: string | null;
   sellerContact: string;
   itemName: string;
   itemDescription: string;
   amount: number;
   fee: number;
+  sourceType?: "manual" | "account_listing";
+  sourceId?: string | null;
 };
 
 export async function createRekberTransaction(input: CreateRekberInput) {
   const invoice = `RKB-${Date.now()}`;
 
   const payload = {
-    invoice,
-    buyerId: input.buyerId,
-    sellerId: null,
-    sellerContact: input.sellerContact,
-    itemName: input.itemName,
-    itemDescription: input.itemDescription,
-    amount: input.amount,
-    fee: input.fee,
-    totalAmount: input.amount + input.fee,
-    status: "waiting_payment",
-    paymentStatus: "unpaid",
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  };
+  invoice,
+  buyerId: input.buyerId,
+  sellerId: input.sellerId ?? null,
+  sellerContact: input.sellerContact,
+  itemName: input.itemName,
+  itemDescription: input.itemDescription,
+  amount: input.amount,
+  fee: input.fee,
+  totalAmount: input.amount + input.fee,
+  sourceType: input.sourceType ?? "manual",
+  sourceId: input.sourceId ?? null,
+  status: "waiting_payment",
+  paymentStatus: "unpaid",
+  createdAt: serverTimestamp(),
+  updatedAt: serverTimestamp(),
+};
 
   const docRef = await addDoc(collection(db, COLLECTIONS.REKBER), payload);
 
@@ -253,6 +258,54 @@ export async function confirmRekberCompleted(rekberId: string) {
     message: `Transaksi ${rekber.itemName} sudah selesai.`,
     type: "rekber",
   });
+}
+
+export async function refundRekberToBuyer(rekberId: string) {
+  const rekberRef = doc(db, COLLECTIONS.REKBER, rekberId);
+  const snapshot = await getDoc(rekberRef);
+
+  if (!snapshot.exists()) {
+    throw new Error("Transaksi rekber tidak ditemukan");
+  }
+
+  const rekber = {
+    id: snapshot.id,
+    ...snapshot.data(),
+  } as RekberTransaction;
+
+  if (rekber.status !== "dispute") {
+    throw new Error("Refund hanya bisa dilakukan saat status dispute");
+  }
+
+  await updateDoc(rekberRef, {
+    status: "refunded",
+    paymentStatus: "refunded",
+    refundedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+
+  await addBalanceToUser({
+    userId: rekber.buyerId,
+    amount: rekber.totalAmount,
+    description: `Refund dana rekber ${rekber.invoice}`,
+    referenceId: rekber.id,
+  });
+
+  await createNotification({
+    userId: rekber.buyerId,
+    title: "Dana Rekber Dikembalikan",
+    message: `Dana untuk transaksi ${rekber.itemName} sudah dikembalikan ke wallet.`,
+    type: "rekber",
+  });
+
+  if (rekber.sellerId) {
+    await createNotification({
+      userId: rekber.sellerId,
+      title: "Rekber Direfund",
+      message: `Transaksi ${rekber.itemName} direfund ke buyer oleh admin.`,
+      type: "rekber",
+    });
+  }
 }
 
 export async function disputeRekber(rekberId: string) {

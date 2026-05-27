@@ -7,6 +7,7 @@ import {
   confirmRekberCompleted,
   disputeRekber,
   getAllRekberTransactions,
+  refundRekberToBuyer,
 } from "@/services/rekber-service";
 
 import { getSellers, UserWithId } from "@/services/user-service";
@@ -106,6 +107,27 @@ export default function AdminRekberPage() {
       setActionLoadingId(null);
     }
   }
+
+  async function handleRefund(id: string) {
+  const confirmed = confirm(
+    "Refund dana ke buyer? Aksi ini akan mengembalikan total pembayaran ke wallet buyer."
+  );
+
+  if (!confirmed) return;
+
+  try {
+    setActionLoadingId(id);
+
+    await refundRekberToBuyer(id);
+
+    await loadData();
+  } catch (error) {
+    console.error(error);
+    alert("Gagal refund rekber");
+  } finally {
+    setActionLoadingId(null);
+  }
+}
 
   async function handleDispute(id: string) {
     const confirmed = confirm("Tandai transaksi ini sebagai dispute?");
@@ -254,27 +276,43 @@ export default function AdminRekberPage() {
                       </td>
 
                       <td className="py-4 pr-4">
-                        {item.status === "holding_fund" ||
-                        item.status === "dispute" ? (
-                          <div className="flex gap-2">
-                            <Button
-                              variant="secondary"
-                              onClick={() => handleDispute(item.id)}
-                              disabled={isActionLoading}
-                            >
-                              Dispute
-                            </Button>
+                           {item.status === "holding_fund" || item.status === "waiting_confirmation" ? (
+                            <div className="flex gap-2">
+                              <Button
+                                variant="secondary"
+                                onClick={() => handleDispute(item.id)}
+                                disabled={isActionLoading}
+                              >
+                                Dispute
+                              </Button>
 
-                            <Button
-                              onClick={() => handleRelease(item.id)}
-                              disabled={isActionLoading || !item.sellerId}
-                            >
-                              Release
-                            </Button>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
+                              <Button
+                                onClick={() => handleRelease(item.id)}
+                                disabled={isActionLoading || !item.sellerId}
+                              >
+                                Release
+                              </Button>
+                            </div>
+                          ) : item.status === "dispute" ? (
+                            <div className="flex gap-2">
+                              <Button
+                                onClick={() => handleRelease(item.id)}
+                                disabled={isActionLoading || !item.sellerId}
+                              >
+                                Release Seller
+                              </Button>
+
+                              <Button
+                                variant="danger"
+                                onClick={() => handleRefund(item.id)}
+                                disabled={isActionLoading}
+                              >
+                                Refund Buyer
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
                       </td>
                     </tr>
                   );

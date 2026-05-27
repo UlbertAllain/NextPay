@@ -36,6 +36,150 @@ const db = getFirestore();
 
 async function seed() {
   const now = Timestamp.now();
+  const sellerId = process.env.SEED_SELLER_ID;
+
+if (!sellerId) {
+  throw new Error("SEED_SELLER_ID belum diisi di .env.local");
+}
+
+const accountListings = [
+  {
+    id: "account-ml-001",
+    sellerId,
+    game: "mobile-legends",
+    title: "Akun ML Mythic Immortal 200 Skin",
+    description: "Akun aman, email bisa diganti, banyak skin collector.",
+    price: 750000,
+    rank: "Mythic Immortal",
+    level: 89,
+    skins: 200,
+    heroes: 120,
+    images: [],
+    verified: true,
+    status: "published",
+    createdAt: now,
+    updatedAt: now,
+  },
+  {
+    id: "account-ml-002",
+    sellerId,
+    game: "mobile-legends",
+    title: "Akun ML Mythical Glory 150 Skin",
+    description: "Rank tinggi, winrate bagus, cocok untuk push ranked.",
+    price: 580000,
+    rank: "Mythical Glory",
+    level: 74,
+    skins: 150,
+    heroes: 112,
+    images: [],
+    verified: true,
+    status: "published",
+    createdAt: now,
+    updatedAt: now,
+  },
+  {
+    id: "account-ml-003",
+    sellerId,
+    game: "mobile-legends",
+    title: "Akun ML Legend Murah Banyak Hero",
+    description: "Akun budget, hero lengkap, cocok untuk akun kedua.",
+    price: 230000,
+    rank: "Legend",
+    level: 52,
+    skins: 68,
+    heroes: 96,
+    images: [],
+    verified: false,
+    status: "published",
+    createdAt: now,
+    updatedAt: now,
+  },
+  {
+    id: "account-pubg-001",
+    sellerId,
+    game: "pubg-mobile",
+    title: "Akun PUBG Conqueror Banyak Outfit",
+    description: "Akun PUBG rare outfit, statistik bagus, siap main.",
+    price: 900000,
+    rank: "Conqueror",
+    level: 71,
+    skins: 88,
+    heroes: 0,
+    images: [],
+    verified: true,
+    status: "published",
+    createdAt: now,
+    updatedAt: now,
+  },
+  {
+    id: "account-pubg-002",
+    sellerId,
+    game: "pubg-mobile",
+    title: "Akun PUBG Ace Master Koleksi Senjata",
+    description: "Banyak skin senjata, outfit event, dan inventory rapi.",
+    price: 520000,
+    rank: "Ace Master",
+    level: 63,
+    skins: 56,
+    heroes: 0,
+    images: [],
+    verified: true,
+    status: "published",
+    createdAt: now,
+    updatedAt: now,
+  },
+  {
+    id: "account-ff-001",
+    sellerId,
+    game: "free-fire",
+    title: "Akun Free Fire Heroic Bundle Sultan",
+    description: "Bundle banyak, emote rare, akun siap push.",
+    price: 420000,
+    rank: "Heroic",
+    level: 68,
+    skins: 120,
+    heroes: 35,
+    images: [],
+    verified: true,
+    status: "published",
+    createdAt: now,
+    updatedAt: now,
+  },
+  {
+    id: "account-ff-002",
+    sellerId,
+    game: "free-fire",
+    title: "Akun Free Fire Master Murah",
+    description: "Akun murah untuk main ranked, beberapa bundle event.",
+    price: 180000,
+    rank: "Master",
+    level: 44,
+    skins: 45,
+    heroes: 24,
+    images: [],
+    verified: false,
+    status: "published",
+    createdAt: now,
+    updatedAt: now,
+  },
+  {
+    id: "account-hok-001",
+    sellerId,
+    game: "honor-of-kings",
+    title: "Akun HOK Grandmaster Skin Epic",
+    description: "Akun Honor of Kings dengan hero dan skin bagus.",
+    price: 350000,
+    rank: "Grandmaster",
+    level: 48,
+    skins: 38,
+    heroes: 61,
+    images: [],
+    verified: true,
+    status: "published",
+    createdAt: now,
+    updatedAt: now,
+  },
+];
 
   const products = [
     {
@@ -178,6 +322,9 @@ async function seed() {
     batch.set(db.collection("rekber_transactions").doc(item.id), item);
   }
 
+  for (const item of accountListings) {
+  batch.set(db.collection("account_listings").doc(item.id), item);
+}
   await batch.commit();
 
   console.log("Seed dummy data selesai.");

@@ -11,78 +11,155 @@ service cloud.firestore {
     }
 
     function role() {
-      return userDoc().data.role;
+      return isSignedIn() ? userDoc().data.role : null;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && (role() == "admin" || role() == "super_admin");
     }
 
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function isAdmin() {
-      return isSignedIn() && (role() == "admin" || role() == "super_admin");
-    }
+    match /account_listings/{listingId} {
+      allow read: if true;
 
-    function isSeller() {
-      return isSignedIn() && (role() == "seller" || isAdmin());
-    }
+      allow create: if isSignedIn()
+        && request.resource.data.sellerId == request.auth.uid;
 
-    match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if isOwner(userId) || isAdmin();
-      allow delete: if isAdmin();
+      allow update: if isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.sellerId == request.auth.uid
+        )
+        || (
+          isSignedIn()
+          && resource.data.status == "published"
+          && request.resource.data.status == "reserved"
+          && request.resource.data.sellerId == resource.data.sellerId
+          && request.resource.data.reservedRekberId is string
+        )
+        || (
+          isSignedIn()
+          && resource.data.status == "reserved"
+          && request.resource.data.status == "sold"
+        )
+        || (
+          isSignedIn()
+          && resource.data.status == "reserved"
+          && request.resource.data.status == "published"
+        );
+
+      allow delete: if isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.sellerId == request.auth.uid
+        );
     }
 
     match /products/{productId} {
       allow read: if true;
-      allow create, update, delete: if isAdmin();
+      allow write: if isSignedIn();
     }
 
     match /ml_accounts/{accountId} {
       allow read: if true;
-      allow create: if isSeller();
-      allow update: if isSeller();
+      allow write: if isSignedIn();
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId);
+
+      // Development mode:
+      // Dibutuhkan karena confirm rekber dari client meng-update saldo seller/buyer.
+      // Nanti production harus dipindah ke Cloud Function / server action admin.
+      allow update: if isSignedIn();
+
       allow delete: if isAdmin();
     }
 
     match /orders/{orderId} {
-      allow read: if isSignedIn() && (
-        resource.data.userId == request.auth.uid || isAdmin()
-      );
-
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow read, write: if isSignedIn();
     }
 
     match /rekber_transactions/{rekberId} {
-      allow read: if isSignedIn() && (
-        resource.data.buyerId == request.auth.uid ||
-        resource.data.sellerId == request.auth.uid ||
-        isAdmin()
-      );
+      allow read: if isSignedIn()
+        && (
+          resource.data.buyerId == request.auth.uid
+          || resource.data.sellerId == request.auth.uid
+          || isAdmin()
+        );
 
-      allow create: if isSignedIn() && request.resource.data.buyerId == request.auth.uid;
-      allow update: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.buyerId == request.auth.uid;
+
+      allow update: if isSignedIn()
+        && (
+          resource.data.buyerId == request.auth.uid
+          || resource.data.sellerId == request.auth.uid
+          || isAdmin()
+        );
+
       allow delete: if isAdmin();
     }
 
     match /payments/{paymentId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
+      allow read, write: if isSignedIn();
     }
 
     match /withdrawals/{withdrawalId} {
-      allow read: if isSignedIn() && (
-        resource.data.sellerId == request.auth.uid || isAdmin()
-      );
+      allow read: if isSignedIn()
+        && (
+          resource.data.userId == request.auth.uid
+          || isAdmin()
+        );
 
-      allow create: if isSeller();
-      allow update, delete: if isAdmin();
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid;
+
+      allow update: if isAdmin();
+
+      allow delete: if isAdmin();
     }
 
     match /audit_logs/{logId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn()
+        && (
+          resource.data.userId == request.auth.uid
+          || isAdmin()
+        );
+
+      allow create: if isSignedIn();
+
+      allow update: if isSignedIn()
+        && resource.data.userId == request.auth.uid;
+
+      allow delete: if isSignedIn()
+        && (
+          resource.data.userId == request.auth.uid
+          || isAdmin()
+        );
+    }
+
+    match /wallet_transactions/{walletTransactionId} {
+      allow read: if isSignedIn()
+        && (
+          resource.data.userId == request.auth.uid
+          || isAdmin()
+        );
+
+      allow create: if isSignedIn();
+
+      allow update, delete: if false;
     }
   }
 }

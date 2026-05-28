@@ -7,19 +7,27 @@ export type RekberStatus =
   | "dispute"
   | "refunded"
   | "cancelled";
-
 export type RekberTransaction = {
   id: string;
   invoice: string;
   buyerId: string;
-  sellerId?: string;
+  sellerId?: string | null;
   sellerContact: string;
   itemName: string;
   itemDescription: string;
   amount: number;
   fee: number;
   totalAmount: number;
-  status: RekberStatus;
-  createdAt: Date;
-  updatedAt: Date;
+  sourceType?: "manual" | "account_listing";
+  sourceId?: string | null;
+  status: string;
+  paymentStatus: string;
+  createdAt: unknown;
+  updatedAt: unknown;
+  paidAt?: unknown;
+  deliveredAt?: unknown;
+  completedAt?: unknown;
+  disputedAt?: unknown;
+  refundedAt?: unknown;
+  releasedByAdminAt?: unknown;
 };

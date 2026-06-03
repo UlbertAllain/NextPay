@@ -15,8 +15,10 @@ import {
 import { db } from "@/lib/firebase/client";
 import { COLLECTIONS } from "@/constants/collections";
 import { AccountGame, AccountListing } from "@/types/account-listing";
+import { assertUserNotSuspended } from "@/services/user-service";
 
 export type CreateAccountListingInput = {
+  
   sellerId: string;
   game: AccountGame;
   title: string;
@@ -29,7 +31,10 @@ export type CreateAccountListingInput = {
   images?: string[];
 };
 
+
+
 export async function createAccountListing(input: CreateAccountListingInput) {
+    await assertUserNotSuspended(input.sellerId);
   const payload = {
     sellerId: input.sellerId,
     game: input.game,

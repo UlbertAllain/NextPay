@@ -152,10 +152,14 @@ export default function WalletPage() {
       setAccountHolderName("");
 
       await loadData();
-    } catch (error) {
-      console.error(error);
-      alert("Gagal mengajukan pencairan saldo");
-    } finally {
+   } catch (error) {
+  const message =
+    error instanceof Error
+      ? error.message
+      : "Gagal mengajukan withdrawal";
+
+  alert(message);
+}finally {
       setSubmitLoading(false);
     }
   } 

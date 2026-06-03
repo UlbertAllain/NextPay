@@ -1,27 +1,26 @@
 import {
-  addDoc,
   collection,
   doc,
   getDoc,
   getDocs,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   updateDoc,
   where,
 } from "firebase/firestore";
-import {
-  runTransaction,
-} from "firebase/firestore";
+
 import { db } from "@/lib/firebase/client";
 import { COLLECTIONS } from "@/constants/collections";
 import { RekberTransaction } from "@/types/rekber";
 import { addBalanceToUser } from "@/services/wallet-service";
 import { createNotification } from "@/services/notification-service";
+import { uploadImageToCloudinary } from "@/services/cloudinary-service";
+import { assertUserNotSuspended } from "@/services/user-service";
 import {
   markAccountListingSold,
   releaseReservedAccountListing,
-  reserveAccountListing,
 } from "@/services/account-listing-service";
 
 export type CreateRekberInput = {
@@ -42,13 +41,36 @@ function getRekberExpiredAt() {
   return expiredAt;
 }
 
+function parseFirestoreDate(value: unknown): Date | null {
+  if (!value) return null;
+
+  if (value instanceof Date) return value;
+
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "toDate" in value &&
+    typeof (value as { toDate?: unknown }).toDate === "function"
+  ) {
+    return (value as { toDate: () => Date }).toDate();
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    return new Date(value);
+  }
+
+  return null;
+}
+
 export async function createRekberTransaction(input: CreateRekberInput) {
   const invoice = `RKB-${Date.now()}`;
   const rekberRef = doc(collection(db, COLLECTIONS.REKBER));
 
   if (input.buyerId === input.sellerId) {
-  throw new Error("Buyer tidak bisa membeli listing milik sendiri");
-}
+    throw new Error("Buyer tidak bisa membeli akun milik sendiri");
+  }
+
+  await assertUserNotSuspended(input.buyerId);
 
   return await runTransaction(db, async (transaction) => {
     let listingRef = null;
@@ -59,21 +81,21 @@ export async function createRekberTransaction(input: CreateRekberInput) {
       const listingSnapshot = await transaction.get(listingRef);
 
       if (!listingSnapshot.exists()) {
-        throw new Error("Listing akun tidak ditemukan");
+        throw new Error("Akun tidak ditemukan");
       }
 
       const listingData = listingSnapshot.data();
 
       if (listingData.sellerId === input.buyerId) {
-  throw new Error("Buyer tidak bisa membeli listing milik sendiri");
-}
+        throw new Error("Buyer tidak bisa membeli akun milik sendiri");
+      }
 
       if (listingData.status !== "published") {
-        throw new Error("Listing akun sudah tidak tersedia");
+        throw new Error("Akun sudah tidak tersedia");
       }
 
       if (listingData.sellerId !== input.sellerId) {
-        throw new Error("Seller listing tidak sesuai");
+        throw new Error("Penjual akun tidak sesuai");
       }
     }
 
@@ -82,17 +104,39 @@ export async function createRekberTransaction(input: CreateRekberInput) {
       buyerId: input.buyerId,
       sellerId: input.sellerId ?? null,
       sellerContact: input.sellerContact,
+
       itemName: input.itemName,
       itemDescription: input.itemDescription,
+
       amount: input.amount,
       fee: input.fee,
       totalAmount: input.amount + input.fee,
+
       sourceType: input.sourceType ?? "manual",
       sourceId: input.sourceId ?? null,
+
       status: "waiting_payment",
       paymentStatus: "unpaid",
+
+      paymentProofUrl: null,
+      paymentProofPublicId: null,
+      paymentProofUploadedAt: null,
+
+      paymentVerifiedBy: null,
+      paymentVerifiedAt: null,
+
+      paymentRejectedReason: null,
+      paymentRejectedAt: null,
+
+      paidAt: null,
       expiredAt: getRekberExpiredAt(),
       cancelledAt: null,
+      deliveredAt: null,
+      completedAt: null,
+      disputedAt: null,
+      refundedAt: null,
+      releasedByAdminAt: null,
+
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
@@ -161,27 +205,164 @@ export async function getAllRekberTransactions() {
   })) as RekberTransaction[];
 }
 
-function parseFirestoreDate(value: unknown): Date | null {
-  if (!value) return null;
+export async function uploadRekberPaymentProof(
+  rekberId: string,
+  buyerId: string,
+  file: File
+) {
+  const rekberRef = doc(db, COLLECTIONS.REKBER, rekberId);
+  const snapshot = await getDoc(rekberRef);
 
-  if (value instanceof Date) {
-    return value;
+  if (!snapshot.exists()) {
+    throw new Error("Transaksi rekber tidak ditemukan");
+  }
+
+  const rekber = {
+    id: snapshot.id,
+    ...snapshot.data(),
+  } as RekberTransaction;
+
+  if (rekber.buyerId !== buyerId) {
+    throw new Error("Anda tidak memiliki akses ke transaksi ini");
+  }
+
+  await assertUserNotSuspended(buyerId);
+
+  if (rekber.status !== "waiting_payment") {
+    throw new Error("Bukti pembayaran hanya bisa diupload saat menunggu pembayaran");
   }
 
   if (
-    typeof value === "object" &&
-    value !== null &&
-    "toDate" in value &&
-    typeof (value as { toDate?: unknown }).toDate === "function"
+    rekber.paymentStatus !== "unpaid" &&
+    rekber.paymentStatus !== "rejected"
   ) {
-    return (value as { toDate: () => Date }).toDate();
+    throw new Error("Status pembayaran tidak bisa menerima bukti baru");
   }
 
-  if (typeof value === "string" || typeof value === "number") {
-    return new Date(value);
+  const expiredAt = parseFirestoreDate(rekber.expiredAt);
+
+  if (expiredAt && expiredAt.getTime() < Date.now()) {
+    await cancelExpiredRekberTransaction(rekberId);
+    throw new Error("Pembayaran sudah melewati batas waktu");
   }
 
-  return null;
+  const uploaded = await uploadImageToCloudinary(file);
+
+  await updateDoc(rekberRef, {
+    paymentStatus: "waiting_verification",
+    paymentProofUrl: uploaded.url,
+    paymentProofPublicId: uploaded.publicId,
+    paymentProofUploadedAt: serverTimestamp(),
+    paymentRejectedReason: null,
+    paymentRejectedAt: null,
+    updatedAt: serverTimestamp(),
+  });
+
+  await createNotification({
+    userId: buyerId,
+    title: "Bukti Pembayaran Diupload",
+    message: `Bukti pembayaran untuk ${rekber.itemName} sedang menunggu verifikasi admin.`,
+    type: "rekber",
+  });
+
+  return uploaded;
+}
+
+export async function approveRekberPaymentProof(
+  rekberId: string,
+  adminId: string
+) {
+  const rekberRef = doc(db, COLLECTIONS.REKBER, rekberId);
+  const snapshot = await getDoc(rekberRef);
+
+  if (!snapshot.exists()) {
+    throw new Error("Transaksi rekber tidak ditemukan");
+  }
+
+  const rekber = {
+    id: snapshot.id,
+    ...snapshot.data(),
+  } as RekberTransaction;
+
+  if (rekber.status !== "waiting_payment") {
+    throw new Error("Rekber tidak berada di status waiting_payment");
+  }
+
+  if (rekber.paymentStatus !== "waiting_verification") {
+    throw new Error("Pembayaran belum menunggu verifikasi admin");
+  }
+
+  if (!rekber.paymentProofUrl) {
+    throw new Error("Bukti pembayaran belum tersedia");
+  }
+
+  await updateDoc(rekberRef, {
+    status: "holding_fund",
+    paymentStatus: "paid",
+    paymentVerifiedBy: adminId,
+    paymentVerifiedAt: serverTimestamp(),
+    paidAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+
+  await createNotification({
+    userId: rekber.buyerId,
+    title: "Pembayaran Diverifikasi",
+    message: `Pembayaran untuk ${rekber.itemName} sudah disetujui admin.`,
+    type: "rekber",
+  });
+
+  if (rekber.sellerId) {
+    await createNotification({
+      userId: rekber.sellerId,
+      title: "Rekber Baru Dibayar",
+      message: `Buyer sudah membayar ${rekber.itemName}. Silakan kirim akun.`,
+      type: "rekber",
+    });
+  }
+}
+
+export async function rejectRekberPaymentProof(
+  rekberId: string,
+  reason: string
+) {
+  const rekberRef = doc(db, COLLECTIONS.REKBER, rekberId);
+  const snapshot = await getDoc(rekberRef);
+
+  if (!snapshot.exists()) {
+    throw new Error("Transaksi rekber tidak ditemukan");
+  }
+
+  const rekber = {
+    id: snapshot.id,
+    ...snapshot.data(),
+  } as RekberTransaction;
+
+  if (rekber.status !== "waiting_payment") {
+    throw new Error("Rekber tidak berada di status waiting_payment");
+  }
+
+  if (rekber.paymentStatus !== "waiting_verification") {
+    throw new Error("Pembayaran belum menunggu verifikasi admin");
+  }
+
+  if (!reason.trim()) {
+    throw new Error("Alasan penolakan wajib diisi");
+  }
+
+  await updateDoc(rekberRef, {
+    paymentStatus: "rejected",
+    paymentRejectedReason: reason.trim(),
+    paymentRejectedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+
+  await createNotification({
+    userId: rekber.buyerId,
+    title: "Bukti Pembayaran Ditolak",
+    message: `Bukti pembayaran untuk ${rekber.itemName} ditolak. Alasan: ${reason.trim()}`,
+    type: "rekber",
+  });
 }
 
 export async function markRekberAsPaid(rekberId: string) {
@@ -202,11 +383,12 @@ export async function markRekberAsPaid(rekberId: string) {
   }
 
   const expiredAt = parseFirestoreDate(rekber.expiredAt);
-if (expiredAt && expiredAt.getTime() < Date.now()) {
-  await cancelExpiredRekberTransaction(rekberId);
-  throw new Error("Pembayaran sudah melewati batas waktu");
-}
-  
+
+  if (expiredAt && expiredAt.getTime() < Date.now()) {
+    await cancelExpiredRekberTransaction(rekberId);
+    throw new Error("Pembayaran sudah melewati batas waktu");
+  }
+
   await updateDoc(rekberRef, {
     status: "holding_fund",
     paymentStatus: "paid",
@@ -225,7 +407,7 @@ if (expiredAt && expiredAt.getTime() < Date.now()) {
     await createNotification({
       userId: rekber.sellerId,
       title: "Rekber Baru Dibayar",
-      message: `Buyer sudah membayar ${rekber.itemName}. Silakan kirim item.`,
+      message: `Buyer sudah membayar ${rekber.itemName}. Silakan kirim akun.`,
       type: "rekber",
     });
   }
@@ -357,9 +539,7 @@ export async function confirmRekberCompleted(rekberId: string) {
     ...snapshot.data(),
   } as RekberTransaction;
 
-  if (rekber.status === "completed") {
-    return;
-  }
+  if (rekber.status === "completed") return;
 
   if (rekber.status !== "waiting_confirmation") {
     throw new Error("Rekber belum bisa dikonfirmasi selesai");

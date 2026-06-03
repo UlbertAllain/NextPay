@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   getAllUsers,
   updateUserRole,
+  updateUserSuspension,
   UserProfile,
   UserRole,
 } from "@/services/user-service";
@@ -38,6 +39,22 @@ function getRoleBadgeClass(role?: string | null) {
   }
 }
 
+function isUserSuspended(user: UserProfile) {
+  return user.isSuspended === true || user.status === "suspended";
+}
+
+function getStatusBadgeClass(user: UserProfile) {
+  if (isUserSuspended(user)) {
+    return "bg-orange-50 text-orange-700";
+  }
+
+  if (user.status === "banned") {
+    return "bg-red-50 text-red-700";
+  }
+
+  return "bg-green-50 text-green-700";
+}
+
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,7 +64,6 @@ export default function AdminUsersPage() {
   async function loadUsers() {
     try {
       setLoading(true);
-
       const data = await getAllUsers();
       setUsers(data);
     } catch (error) {
@@ -69,6 +85,7 @@ export default function AdminUsersPage() {
       totalAdmin: users.filter((user) => user.role === "admin").length,
       totalSuperAdmin: users.filter((user) => user.role === "super_admin")
         .length,
+      totalSuspended: users.filter((user) => isUserSuspended(user)).length,
     };
   }, [users]);
 
@@ -105,7 +122,6 @@ export default function AdminUsersPage() {
 
     try {
       setActionLoadingId(user.id);
-
       await updateUserRole(user.id, nextRole);
       await loadUsers();
     } catch (error) {
@@ -116,39 +132,48 @@ export default function AdminUsersPage() {
     }
   }
 
+  async function handleToggleSuspension(user: UserProfile) {
+    if (user.role === "super_admin") {
+      alert("Super admin tidak boleh disuspend dari panel ini");
+      return;
+    }
+
+    const nextSuspended = !isUserSuspended(user);
+
+    const confirmed = confirm(
+      nextSuspended
+        ? `Suspend user ${user.email || user.id}?`
+        : `Aktifkan kembali user ${user.email || user.id}?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setActionLoadingId(user.id);
+      await updateUserSuspension(user.id, nextSuspended);
+      await loadUsers();
+    } catch (error) {
+      console.error(error);
+      alert("Gagal mengubah status suspend user");
+    } finally {
+      setActionLoadingId(null);
+    }
+  }
+
   return (
-    <section className="space-y-6">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-950">Manajemen User</h1>
+        <h1 className="text-3xl font-bold text-slate-900">Manajemen User</h1>
         <p className="mt-2 text-sm text-slate-500">
-          Kelola akun, role, saldo, dan profil user NextPay.
+          Kelola akun, role, saldo, status suspend, dan profil user NextPay.
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          title="Total User"
-          value={stats.totalUser}
-          description="User biasa yang terdaftar."
-        />
-
-        <StatCard
-          title="Total Penjual"
-          value={stats.totalSeller}
-          description="User dengan role penjual."
-        />
-
-        <StatCard
-          title="Total Admin"
-          value={stats.totalAdmin}
-          description="Administrator platform."
-        />
-
-        <StatCard
-          title="Super Admin"
-          value={stats.totalSuperAdmin}
-          description="Role tertinggi sistem."
-        />
+<div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <StatCard title="User" value={stats.totalUser} description="Total akun user biasa" />
+<StatCard title="Penjual" value={stats.totalSeller} description="Total akun penjual" />
+<StatCard title="Admin" value={stats.totalAdmin} description="Total akun admin" />
+<StatCard title="Super Admin" value={stats.totalSuperAdmin} description="Total akun super admin" />
       </div>
 
       <Card>
@@ -156,51 +181,50 @@ export default function AdminUsersPage() {
           <CardTitle>Daftar User</CardTitle>
         </CardHeader>
 
-        <CardContent>
-          <div className="mb-4">
-            <input
-              type="text"
-              placeholder="Cari nama, email, atau UID..."
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              className="h-11 w-full rounded-xl border border-slate-200 px-4 text-sm outline-none focus:border-blue-500"
-            />
-          </div>
+        <CardContent className="space-y-4">
+          <input
+            type="text"
+            value={search}
+            placeholder="Cari nama, email, atau UID user..."
+            onChange={(event) => setSearch(event.target.value)}
+            className="h-11 w-full rounded-xl border border-slate-200 px-4 text-sm outline-none focus:border-blue-500"
+          />
 
           {loading ? (
-            <p className="text-sm text-slate-500">Memuat user...</p>
+            <div className="rounded-xl border border-slate-200 p-6 text-sm text-slate-500">
+              Memuat user...
+            </div>
           ) : filteredUsers.length === 0 ? (
-            <p className="text-sm text-slate-500">
+            <div className="rounded-xl border border-slate-200 p-6 text-sm text-slate-500">
               User tidak ditemukan.
-            </p>
+            </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1100px] text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 text-left text-slate-500">
-                    <th className="py-3 pr-4 font-medium">User</th>
-                    <th className="py-3 pr-4 font-medium">Email</th>
-                    <th className="py-3 pr-4 font-medium">Role</th>
-                    <th className="py-3 pr-4 font-medium">Saldo</th>
-                    <th className="py-3 pr-4 font-medium">Ubah Role</th>
-                    <th className="py-3 pr-4 font-medium">Detail</th>
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="px-4 py-3 text-left">User</th>
+                    <th className="px-4 py-3 text-left">Email</th>
+                    <th className="px-4 py-3 text-left">Role</th>
+                    <th className="px-4 py-3 text-left">Status</th>
+                    <th className="px-4 py-3 text-left">Saldo</th>
+                    <th className="px-4 py-3 text-left">Ubah Role</th>
+                    <th className="px-4 py-3 text-left">Moderasi</th>
+                    <th className="px-4 py-3 text-left">Detail</th>
                   </tr>
                 </thead>
 
-                <tbody>
+                <tbody className="divide-y divide-slate-100">
                   {filteredUsers.map((user) => {
                     const displayName =
                       user.displayName || user.name || user.email || user.id;
-
                     const isSuperAdmin = user.role === "super_admin";
                     const isActionLoading = actionLoadingId === user.id;
+                    const suspended = isUserSuspended(user);
 
                     return (
-                      <tr
-                        key={user.id}
-                        className="border-b border-slate-100 align-top"
-                      >
-                        <td className="py-4 pr-4">
+                      <tr key={user.id} className="bg-white">
+                        <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             {user.photoURL ? (
                               <img
@@ -209,31 +233,29 @@ export default function AdminUsersPage() {
                                 className="h-10 w-10 rounded-full object-cover"
                               />
                             ) : (
-                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-500">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700">
                                 {displayName.charAt(0).toUpperCase()}
                               </div>
                             )}
 
                             <div>
-                              <p className="font-medium text-slate-950">
+                              <div className="font-medium text-slate-900">
                                 {displayName}
-                              </p>
-                              <p className="mt-1 max-w-[220px] break-all text-xs text-slate-400">
+                              </div>
+                              <div className="text-xs text-slate-500">
                                 {user.id}
-                              </p>
+                              </div>
                             </div>
                           </div>
                         </td>
 
-                        <td className="py-4 pr-4">
-                          <p className="max-w-[240px] break-all text-slate-600">
-                            {user.email || "-"}
-                          </p>
+                        <td className="px-4 py-3 text-slate-600">
+                          {user.email || "-"}
                         </td>
 
-                        <td className="py-4 pr-4">
+                        <td className="px-4 py-3">
                           <span
-                            className={`inline-flex rounded-full px-3 py-1 text-xs font-medium capitalize ${getRoleBadgeClass(
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ${getRoleBadgeClass(
                               user.role
                             )}`}
                           >
@@ -241,11 +263,21 @@ export default function AdminUsersPage() {
                           </span>
                         </td>
 
-                        <td className="py-4 pr-4 font-semibold text-slate-950">
+                        <td className="px-4 py-3">
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusBadgeClass(
+                              user
+                            )}`}
+                          >
+                            {suspended ? "suspended" : user.status || "active"}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3 text-slate-700">
                           {formatRupiah(user.balance ?? 0)}
                         </td>
 
-                        <td className="py-4 pr-4">
+                        <td className="px-4 py-3">
                           {isSuperAdmin ? (
                             <span className="text-xs text-slate-500">
                               Role terkunci
@@ -253,7 +285,6 @@ export default function AdminUsersPage() {
                           ) : (
                             <div className="flex items-center gap-2">
                               <select
-                                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500"
                                 value={user.role || "user"}
                                 disabled={isActionLoading}
                                 onChange={(event) =>
@@ -262,6 +293,7 @@ export default function AdminUsersPage() {
                                     event.target.value as UserRole
                                   )
                                 }
+                                className="h-9 rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-blue-500"
                               >
                                 {editableRoles.map((role) => (
                                   <option key={role} value={role}>
@@ -279,12 +311,28 @@ export default function AdminUsersPage() {
                           )}
                         </td>
 
-                        <td className="py-4 pr-4">
-                          <Button variant="secondary">
-                            <Link href={`/admin/users/${user.id}`}>
-                              Detail
-                            </Link>
+                        <td className="px-4 py-3">
+                          <Button
+                            type="button"
+                            disabled={isSuperAdmin || isActionLoading}
+                            onClick={() => handleToggleSuspension(user)}
+                            className={
+                              suspended
+                                ? "bg-green-600 hover:bg-green-700"
+                                : "bg-orange-600 hover:bg-orange-700"
+                            }
+                          >
+                            {suspended ? "Aktifkan" : "Suspend"}
                           </Button>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <Link
+                            href={`/admin/users/${user.id}`}
+                            className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                          >
+                            Detail
+                          </Link>
                         </td>
                       </tr>
                     );
@@ -295,6 +343,6 @@ export default function AdminUsersPage() {
           )}
         </CardContent>
       </Card>
-    </section>
+    </div>
   );
 }

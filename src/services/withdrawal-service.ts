@@ -14,6 +14,7 @@ import {
 
 import { db } from "@/lib/firebase/client";
 import { COLLECTIONS } from "@/constants/collections";
+import { isSuspendedUser } from "@/services/user-service";
 
 export type WithdrawalStatus = "pending" | "approved" | "rejected";
 
@@ -50,7 +51,14 @@ export async function createWithdrawalRequest(input: {
     throw new Error("User tidak ditemukan");
   }
 
-  const userData = userSnapshot.data();
+    const userData = userSnapshot.data();
+
+  if (isSuspendedUser(userData)) {
+    throw new Error(
+      "Akun Anda sedang ditangguhkan. Silakan hubungi admin untuk informasi lebih lanjut."
+    );
+  }
+
   const balance = userData.balance ?? 0;
 
   if (balance < input.amount) {

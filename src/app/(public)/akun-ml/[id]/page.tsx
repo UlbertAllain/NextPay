@@ -153,9 +153,13 @@ export default function AccountListingDetailPage() {
 
       router.push(`/mock-rekber-payment/${rekber.id}`);
     } catch (error) {
-      console.error(error);
-      alert("Gagal membuat transaksi rekber");
-    } finally {
+  const message =
+    error instanceof Error
+      ? error.message
+      : "Gagal membuat transaksi rekber";
+
+  alert(message);
+} finally {
       setCheckoutLoading(false);
     }
   }

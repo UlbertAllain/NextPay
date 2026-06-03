@@ -7,113 +7,31 @@ import {
   confirmRekberCompleted,
   disputeRekber,
   getRekberByBuyerId,
+  uploadRekberPaymentProof,
 } from "@/services/rekber-service";
-import {
-  createSellerReview,
-  getReviewByRekberAndBuyer,
-} from "@/services/seller-review-service";
-
 import { RekberTransaction } from "@/types/rekber";
 import { formatRupiah } from "@/lib/format";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-
-function formatStatus(status: string) {
-  return status.replaceAll("_", " ");
-}
-
-function getStatusBadgeClass(status: string) {
-  switch (status) {
-    case "waiting_payment":
-      return "bg-slate-100 text-slate-700";
-    case "holding_fund":
-      return "bg-blue-50 text-blue-700";
-    case "waiting_confirmation":
-      return "bg-orange-50 text-orange-700";
-    case "completed":
-      return "bg-green-50 text-green-700";
-    case "dispute":
-      return "bg-red-50 text-red-700";
-    case "refunded":
-      return "bg-purple-50 text-purple-700";
-    case "cancelled":
-      return "bg-red-50 text-red-700";
-    default:
-      return "bg-slate-100 text-slate-700";
-  }
-}
-
-function getBuyerStatusText(status: string) {
-  switch (status) {
-    case "waiting_payment":
-      return "Menunggu pembayaran";
-    case "holding_fund":
-      return "Dana sudah ditahan. Menunggu seller mengirim item.";
-    case "waiting_confirmation":
-      return "Seller sudah mengirim item. Silakan cek dan konfirmasi.";
-    case "completed":
-      return "Transaksi selesai.";
-    case "dispute":
-      return "Transaksi sedang dalam dispute dan menunggu keputusan admin.";
-    case "refunded":
-      return "Dana sudah dikembalikan.";
-    case "cancelled":
-      return "Transaksi dibatalkan karena pembayaran melewati batas waktu.";
-    default:
-      return "-";
-  }
-}
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function UserRekberPage() {
   const { firebaseUser } = useAuth();
 
   const [items, setItems] = useState<RekberTransaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
-
-  const [reviewRatings, setReviewRatings] = useState<Record<string, number>>(
+  const [selectedFiles, setSelectedFiles] = useState<Record<string, File | null>>(
     {}
   );
-
-  const [reviewComments, setReviewComments] = useState<
-    Record<string, string>
-  >({});
-
-  const [submittedReviews, setSubmittedReviews] = useState<
-    Record<string, boolean>
-  >({});
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   async function loadRekber() {
-    if (!firebaseUser) {
-      setItems([]);
-      setLoading(false);
-      return;
-    }
+    if (!firebaseUser) return;
 
     try {
       setLoading(true);
-
       const data = await getRekberByBuyerId(firebaseUser.uid);
-
       setItems(data);
-
-      const reviewMap: Record<string, boolean> = {};
-
-      for (const item of data) {
-        const review = await getReviewByRekberAndBuyer(
-          item.id,
-          firebaseUser.uid
-        );
-
-        reviewMap[item.id] = !!review;
-      }
-
-      setSubmittedReviews(reviewMap);
     } catch (error) {
       console.error(error);
       alert("Gagal mengambil data rekber");
@@ -126,272 +44,271 @@ export default function UserRekberPage() {
     loadRekber();
   }, [firebaseUser]);
 
-  async function handleConfirm(id: string) {
-    const confirmed = confirm(
-      "Konfirmasi transaksi selesai? Dana akan langsung dirilis ke Penjual."
-    );
+  function handleSelectFile(rekberId: string, file: File | null) {
+    setSelectedFiles((current) => ({
+      ...current,
+      [rekberId]: file,
+    }));
+  }
 
-    if (!confirmed) return;
+  async function handleUploadPaymentProof(item: RekberTransaction) {
+    if (!firebaseUser) {
+      alert("Silakan login terlebih dahulu");
+      return;
+    }
+
+    const file = selectedFiles[item.id];
+
+    if (!file) {
+      alert("Pilih file bukti pembayaran terlebih dahulu");
+      return;
+    }
 
     try {
-      setActionLoadingId(id);
+      setUploadingId(item.id);
+      await uploadRekberPaymentProof(item.id, firebaseUser.uid, file);
+      setSelectedFiles((current) => ({
+        ...current,
+        [item.id]: null,
+      }));
+      alert("Bukti pembayaran berhasil diupload. Menunggu verifikasi admin.");
+      await loadRekber();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Gagal upload bukti pembayaran";
 
+      alert(message);
+    } finally {
+      setUploadingId(null);
+    }
+  }
+
+  async function handleConfirm(id: string) {
+    try {
+      setActionLoadingId(id);
       await confirmRekberCompleted(id);
       await loadRekber();
     } catch (error) {
-      console.error(error);
-      alert("Gagal mengonfirmasi transaksi");
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Gagal mengonfirmasi rekber";
+
+      alert(message);
     } finally {
       setActionLoadingId(null);
     }
   }
 
   async function handleDispute(id: string) {
-    const confirmed = confirm(
-      "Buka dispute untuk transaksi ini? Admin akan memeriksa transaksi."
-    );
-
-    if (!confirmed) return;
-
     try {
       setActionLoadingId(id);
-
       await disputeRekber(id);
       await loadRekber();
     } catch (error) {
-      console.error(error);
-      alert("Gagal membuka dispute");
+      const message =
+        error instanceof Error ? error.message : "Gagal membuka dispute";
+
+      alert(message);
     } finally {
       setActionLoadingId(null);
     }
   }
 
-  async function handleSubmitReview(item: RekberTransaction) {
-    if (!firebaseUser) return;
-
-    const rating = reviewRatings[item.id] || 5;
-    const comment = reviewComments[item.id] || "";
-
-    if (!item.sellerId) {
-      alert("Penjual tidak ditemukan");
-      return;
+  function getPaymentStatusLabel(item: RekberTransaction) {
+    switch (item.paymentStatus) {
+      case "waiting_verification":
+        return "Menunggu Verifikasi Admin";
+      case "paid":
+        return "Sudah Dibayar";
+      case "rejected":
+        return "Bukti Ditolak";
+      case "expired":
+        return "Expired";
+      case "refunded":
+        return "Refunded";
+      case "unpaid":
+      default:
+        return "Belum Dibayar";
     }
+  }
 
-    try {
-      setActionLoadingId(item.id);
+  function getStatusLabel(item: RekberTransaction) {
+    return item.status.replaceAll("_", " ");
+  }
 
-      await createSellerReview({
-        rekberId: item.id,
-        buyerId: firebaseUser.uid,
-        sellerId: item.sellerId,
-        rating,
-        comment,
-      });
-
-      await loadRekber();
-    } catch (error) {
-      console.error(error);
-      alert("Gagal mengirim review");
-    } finally {
-      setActionLoadingId(null);
-    }
+  function canUploadPaymentProof(item: RekberTransaction) {
+    return (
+      item.status === "waiting_payment" &&
+      (item.paymentStatus === "unpaid" || item.paymentStatus === "rejected")
+    );
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-950">
+        <h1 className="text-3xl font-bold text-slate-900">
           Transaksi Rekber Saya
         </h1>
-
         <p className="mt-2 text-sm text-slate-500">
-          Pantau transaksi rekber akun game yang kamu beli di marketplace
-          NextPay.
+          Pantau pembayaran, upload bukti transfer, konfirmasi akun, dan buka
+          dispute jika transaksi bermasalah.
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Daftar Transaksi</CardTitle>
-        </CardHeader>
+      {loading ? (
+        <Card>
+          <CardContent className="p-6 text-sm text-slate-500">
+            Memuat rekber...
+          </CardContent>
+        </Card>
+      ) : items.length === 0 ? (
+        <Card>
+          <CardContent className="p-6 text-sm text-slate-500">
+            Belum ada transaksi rekber.
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {items.map((item) => {
+            const isUploading = uploadingId === item.id;
+            const isActionLoading = actionLoadingId === item.id;
 
-        <CardContent>
-          {loading ? (
-            <p className="text-sm text-slate-500">Memuat rekber...</p>
-          ) : items.length === 0 ? (
-            <p className="text-sm text-slate-500">
-              Belum ada transaksi rekber.
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {items.map((item) => {
-                const isActionLoading = actionLoadingId === item.id;
+            return (
+              <Card key={item.id}>
+                <CardHeader>
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <CardTitle>{item.itemName}</CardTitle>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Invoice: {item.invoice}
+                      </p>
+                    </div>
 
-                return (
-                  <div
-                    key={item.id}
-                    className="rounded-2xl border border-slate-200 p-4"
-                  >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="font-semibold text-slate-950">
-                            {item.itemName}
-                          </h2>
-
-                          <span
-                            className={`inline-flex rounded-full px-3 py-1 text-xs font-medium capitalize ${getStatusBadgeClass(
-                              item.status
-                            )}`}
-                          >
-                            {formatStatus(item.status)}
-                          </span>
-                        </div>
-
-                        <p className="text-xs text-slate-500">
-                          Invoice: {item.invoice}
-                        </p>
-
-                        <p className="max-w-2xl whitespace-pre-line text-sm leading-6 text-slate-600">
-                          {item.itemDescription || "-"}
-                        </p>
-
-                        <p className="text-sm text-slate-500">
-                          {getBuyerStatusText(item.status)}
-                        </p>
-
-                        {item.status === "completed" &&
-                          !submittedReviews[item.id] && (
-                            <div className="mt-4 rounded-2xl border border-slate-200 p-4">
-                              <h3 className="font-semibold text-slate-950">
-                                Beri Review Penjual untuk Transaksi Ini
-                              </h3>
-
-                              <div className="mt-4">
-                                <label className="text-sm font-medium text-slate-700">
-                                  Rating
-                                </label>
-
-                                <select
-                                  className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none"
-                                  value={reviewRatings[item.id] || 5}
-                                  onChange={(event) =>
-                                    setReviewRatings((prev) => ({
-                                      ...prev,
-                                      [item.id]: Number(event.target.value),
-                                    }))
-                                  }
-                                >
-                                  <option value={5}>5 - Sangat Bagus</option>
-                                  <option value={4}>4 - Bagus</option>
-                                  <option value={3}>3 - Normal</option>
-                                  <option value={2}>2 - Buruk</option>
-                                  <option value={1}>1 - Sangat Buruk</option>
-                                </select>
-                              </div>
-
-                              <div className="mt-4">
-                                <label className="text-sm font-medium text-slate-700">
-                                  Komentar
-                                </label>
-
-                                <textarea
-                                  className="mt-2 min-h-[120px] w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none"
-                                  placeholder="Bagikan pengalaman transaksi dengan penjual ini..."
-                                  value={reviewComments[item.id] || ""}
-                                  onChange={(event) =>
-                                    setReviewComments((prev) => ({
-                                      ...prev,
-                                      [item.id]: event.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-
-                              <Button
-                                className="mt-4"
-                                onClick={() => handleSubmitReview(item)}
-                                disabled={isActionLoading}
-                              >
-                                {isActionLoading
-                                  ? "Mengirim..."
-                                  : "Kirim Review"}
-                              </Button>
-                            </div>
-                          )}
-
-                        {item.status === "completed" &&
-                          submittedReviews[item.id] && (
-                            <div className="mt-4 rounded-xl bg-green-50 p-3 text-sm text-green-700">
-                              Kamu sudah memberikan review untuk transaksi ini.
-                            </div>
-                          )}
-                      </div>
-
-                      <div className="min-w-[220px] space-y-3 rounded-2xl bg-slate-50 p-4">
-                        <div>
-                          <p className="text-xs text-slate-500">
-                            Total Bayar
-                          </p>
-
-                          <p className="mt-1 font-bold text-slate-950">
-                            {formatRupiah(item.totalAmount)}
-                          </p>
-                        </div>
-
-                        <div className="space-y-2">
-                          {item.status === "waiting_payment" && (
-                            <Button
-                              className="w-full"
-                              onClick={() => {
-                                window.location.href = `/mock-rekber-payment/${item.id}`;
-                              }}
-                            >
-                              Lanjut Bayar
-                            </Button>
-                          )}
-
-                          {item.status === "waiting_confirmation" && (
-                            <>
-                              <Button
-                                className="w-full"
-                                onClick={() => handleConfirm(item.id)}
-                                disabled={isActionLoading}
-                              >
-                                {isActionLoading
-                                  ? "Memproses..."
-                                  : "Konfirmasi Selesai"}
-                              </Button>
-
-                              <Button
-                                className="w-full"
-                                onClick={() => handleDispute(item.id)}
-                                disabled={isActionLoading}
-                              >
-                                Buka Dispute
-                              </Button>
-                            </>
-                          )}
-
-                          {item.status === "holding_fund" && (
-                            <Button
-                              className="w-full"
-                              onClick={() => handleDispute(item.id)}
-                              disabled={isActionLoading}
-                            >
-                              Buka Dispute
-                            </Button>
-                          )}
-                        </div>
-                      </div>
+                    <div className="text-left md:text-right">
+                      <p className="text-lg font-bold text-slate-900">
+                        {formatRupiah(item.totalAmount)}
+                      </p>
+                      <p className="mt-1 text-xs capitalize text-slate-500">
+                        Status: {getStatusLabel(item)}
+                      </p>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                </CardHeader>
+
+                <CardContent className="space-y-4">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-sm font-semibold text-slate-900">
+                      Status Pembayaran
+                    </p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      {getPaymentStatusLabel(item)}
+                    </p>
+
+                    {item.paymentRejectedReason ? (
+                      <p className="mt-2 text-sm text-red-600">
+                        Alasan penolakan: {item.paymentRejectedReason}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  {canUploadPaymentProof(item) ? (
+                    <div className="rounded-xl border border-slate-200 p-4">
+                      <p className="text-sm font-semibold text-slate-900">
+                        Upload Bukti Pembayaran
+                      </p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Upload gambar bukti transfer. Format yang didukung:
+                        JPG, JPEG, PNG, WEBP. Maksimal 5 MB.
+                      </p>
+
+                      <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/jpg,image/png,image/webp"
+                          disabled={isUploading}
+                          onChange={(event) =>
+                            handleSelectFile(
+                              item.id,
+                              event.target.files?.[0] ?? null
+                            )
+                          }
+                          className="block w-full rounded-xl border border-slate-200 text-sm file:mr-4 file:border-0 file:bg-slate-900 file:px-4 file:py-3 file:text-sm file:font-semibold file:text-white"
+                        />
+
+                        <Button
+                          type="button"
+                          disabled={isUploading}
+                          onClick={() => handleUploadPaymentProof(item)}
+                        >
+                          {isUploading ? "Mengupload..." : "Upload Bukti"}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {item.paymentStatus === "waiting_verification" ? (
+                    <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+                      Bukti pembayaran sudah dikirim dan sedang menunggu
+                      verifikasi admin.
+                    </div>
+                  ) : null}
+
+                  {item.paymentProofUrl ? (
+                    <div className="rounded-xl border border-slate-200 p-4">
+                      <p className="text-sm font-semibold text-slate-900">
+                        Bukti Pembayaran
+                      </p>
+
+                      <img
+                        src={item.paymentProofUrl}
+                        alt="Bukti pembayaran"
+                        className="mt-3 max-h-80 rounded-xl border border-slate-200 object-contain"
+                      />
+                    </div>
+                  ) : null}
+
+                  {item.status === "holding_fund" ? (
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
+                      Dana sudah ditahan oleh NextPay. Menunggu penjual
+                      menyerahkan akun.
+                    </div>
+                  ) : null}
+
+                  {item.status === "waiting_confirmation" ? (
+                    <div className="flex flex-col gap-3 rounded-xl border border-slate-200 p-4 md:flex-row">
+                      <Button
+                        type="button"
+                        disabled={isActionLoading}
+                        onClick={() => handleDispute(item.id)}
+                      >
+                        Dispute
+                      </Button>
+
+                      <Button
+                        type="button"
+                        disabled={isActionLoading}
+                        onClick={() => handleConfirm(item.id)}
+                      >
+                        Konfirmasi Selesai
+                      </Button>
+                    </div>
+                  ) : null}
+
+                  {item.status === "dispute" ? (
+                    <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-700">
+                      Transaksi sedang dalam dispute dan menunggu keputusan
+                      admin.
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

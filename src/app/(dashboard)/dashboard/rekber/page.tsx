@@ -7,7 +7,6 @@ import {
   confirmRekberCompleted,
   disputeRekber,
   getRekberByBuyerId,
-  uploadRekberPaymentProof,
 } from "@/services/rekber-service";
 import { RekberTransaction } from "@/types/rekber";
 import { formatRupiah } from "@/lib/format";
@@ -19,10 +18,6 @@ export default function UserRekberPage() {
 
   const [items, setItems] = useState<RekberTransaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedFiles, setSelectedFiles] = useState<Record<string, File | null>>(
-    {}
-  );
-  const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   async function loadRekber() {
@@ -43,47 +38,6 @@ export default function UserRekberPage() {
   useEffect(() => {
     loadRekber();
   }, [firebaseUser]);
-
-  function handleSelectFile(rekberId: string, file: File | null) {
-    setSelectedFiles((current) => ({
-      ...current,
-      [rekberId]: file,
-    }));
-  }
-
-  async function handleUploadPaymentProof(item: RekberTransaction) {
-    if (!firebaseUser) {
-      alert("Silakan login terlebih dahulu");
-      return;
-    }
-
-    const file = selectedFiles[item.id];
-
-    if (!file) {
-      alert("Pilih file bukti pembayaran terlebih dahulu");
-      return;
-    }
-
-    try {
-      setUploadingId(item.id);
-      await uploadRekberPaymentProof(item.id, firebaseUser.uid, file);
-      setSelectedFiles((current) => ({
-        ...current,
-        [item.id]: null,
-      }));
-      alert("Bukti pembayaran berhasil diupload. Menunggu verifikasi admin.");
-      await loadRekber();
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Gagal upload bukti pembayaran";
-
-      alert(message);
-    } finally {
-      setUploadingId(null);
-    }
-  }
 
   async function handleConfirm(id: string) {
     try {
@@ -119,12 +73,8 @@ export default function UserRekberPage() {
 
   function getPaymentStatusLabel(item: RekberTransaction) {
     switch (item.paymentStatus) {
-      case "waiting_verification":
-        return "Menunggu Verifikasi Admin";
       case "paid":
         return "Sudah Dibayar";
-      case "rejected":
-        return "Bukti Ditolak";
       case "expired":
         return "Expired";
       case "refunded":
@@ -139,13 +89,6 @@ export default function UserRekberPage() {
     return item.status.replaceAll("_", " ");
   }
 
-  function canUploadPaymentProof(item: RekberTransaction) {
-    return (
-      item.status === "waiting_payment" &&
-      (item.paymentStatus === "unpaid" || item.paymentStatus === "rejected")
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div>
@@ -153,8 +96,8 @@ export default function UserRekberPage() {
           Transaksi Rekber Saya
         </h1>
         <p className="mt-2 text-sm text-slate-500">
-          Pantau pembayaran, upload bukti transfer, konfirmasi akun, dan buka
-          dispute jika transaksi bermasalah.
+          Pantau pembayaran, status dana, konfirmasi akun, dan buka dispute jika
+          transaksi bermasalah.
         </p>
       </div>
 
@@ -173,7 +116,6 @@ export default function UserRekberPage() {
       ) : (
         <div className="space-y-4">
           {items.map((item) => {
-            const isUploading = uploadingId === item.id;
             const isActionLoading = actionLoadingId === item.id;
 
             return (
@@ -206,67 +148,12 @@ export default function UserRekberPage() {
                     <p className="mt-1 text-sm text-slate-600">
                       {getPaymentStatusLabel(item)}
                     </p>
-
-                    {item.paymentRejectedReason ? (
-                      <p className="mt-2 text-sm text-red-600">
-                        Alasan penolakan: {item.paymentRejectedReason}
-                      </p>
-                    ) : null}
                   </div>
 
-                  {canUploadPaymentProof(item) ? (
-                    <div className="rounded-xl border border-slate-200 p-4">
-                      <p className="text-sm font-semibold text-slate-900">
-                        Upload Bukti Pembayaran
-                      </p>
-                      <p className="mt-1 text-sm text-slate-500">
-                        Upload gambar bukti transfer. Format yang didukung:
-                        JPG, JPEG, PNG, WEBP. Maksimal 5 MB.
-                      </p>
-
-                      <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
-                        <input
-                          type="file"
-                          accept="image/jpeg,image/jpg,image/png,image/webp"
-                          disabled={isUploading}
-                          onChange={(event) =>
-                            handleSelectFile(
-                              item.id,
-                              event.target.files?.[0] ?? null
-                            )
-                          }
-                          className="block w-full rounded-xl border border-slate-200 text-sm file:mr-4 file:border-0 file:bg-slate-900 file:px-4 file:py-3 file:text-sm file:font-semibold file:text-white"
-                        />
-
-                        <Button
-                          type="button"
-                          disabled={isUploading}
-                          onClick={() => handleUploadPaymentProof(item)}
-                        >
-                          {isUploading ? "Mengupload..." : "Upload Bukti"}
-                        </Button>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {item.paymentStatus === "waiting_verification" ? (
-                    <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
-                      Bukti pembayaran sudah dikirim dan sedang menunggu
-                      verifikasi admin.
-                    </div>
-                  ) : null}
-
-                  {item.paymentProofUrl ? (
-                    <div className="rounded-xl border border-slate-200 p-4">
-                      <p className="text-sm font-semibold text-slate-900">
-                        Bukti Pembayaran
-                      </p>
-
-                      <img
-                        src={item.paymentProofUrl}
-                        alt="Bukti pembayaran"
-                        className="mt-3 max-h-80 rounded-xl border border-slate-200 object-contain"
-                      />
+                  {item.status === "waiting_payment" ? (
+                    <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-700">
+                      Transaksi masih menunggu pembayaran. Selesaikan pembayaran
+                      di halaman mock payment.
                     </div>
                   ) : null}
 
@@ -301,6 +188,24 @@ export default function UserRekberPage() {
                     <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-700">
                       Transaksi sedang dalam dispute dan menunggu keputusan
                       admin.
+                    </div>
+                  ) : null}
+
+                  {item.status === "completed" ? (
+                    <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+                      Transaksi sudah selesai.
+                    </div>
+                  ) : null}
+
+                  {item.status === "refunded" ? (
+                    <div className="rounded-xl border border-purple-200 bg-purple-50 p-4 text-sm text-purple-700">
+                      Transaksi sudah direfund ke wallet buyer.
+                    </div>
+                  ) : null}
+
+                  {item.status === "cancelled" ? (
+                    <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                      Transaksi dibatalkan.
                     </div>
                   ) : null}
                 </CardContent>

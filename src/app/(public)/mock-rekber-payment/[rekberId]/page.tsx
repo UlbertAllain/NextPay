@@ -103,7 +103,9 @@ export default function MockRekberPaymentPage() {
     try {
       setLoading(true);
 
-      const snapshot = await getDoc(doc(db, "rekber_transactions", params.rekberId));
+      const snapshot = await getDoc(
+        doc(db, "rekber_transactions", params.rekberId)
+      );
 
       if (!snapshot.exists()) {
         setRekber(null);
@@ -162,10 +164,8 @@ export default function MockRekberPaymentPage() {
     if (isRekberExpired(rekber.expiredAt)) {
       try {
         setPayLoading(true);
-
         await cancelExpiredRekberTransaction(rekber.id);
         await loadData();
-
         alert("Pembayaran sudah melewati batas waktu");
       } catch (error) {
         console.error(error);
@@ -192,21 +192,17 @@ export default function MockRekberPaymentPage() {
   }
 
   const canPay =
-    !loading &&
-    !payLoading &&
-    rekber?.status === "waiting_payment" &&
-    !expired;
+    !loading && !payLoading && rekber?.status === "waiting_payment" && !expired;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-      <Card className="w-full max-w-lg">
-        <CardContent className="p-6">
-          <div className="mb-6">
+    <div className="mx-auto flex min-h-[70vh] max-w-xl items-center justify-center px-4 py-10">
+      <Card className="w-full">
+        <CardContent className="space-y-6 p-6">
+          <div>
             <h1 className="text-2xl font-bold text-slate-950">
               Mock Rekber Payment
             </h1>
-
-            <p className="mt-2 text-sm text-slate-500">
+            <p className="mt-2 text-sm leading-6 text-slate-500">
               Simulasi pembayaran dana rekber untuk development.
             </p>
           </div>
@@ -216,70 +212,71 @@ export default function MockRekberPaymentPage() {
               Memuat data pembayaran...
             </p>
           ) : !rekber ? (
-            <div className="rounded-2xl bg-red-50 p-4 text-sm text-red-700">
+            <p className="text-sm text-red-600">
               Transaksi rekber tidak ditemukan.
-            </div>
+            </p>
           ) : (
             <>
-              <div className="space-y-3 rounded-2xl bg-slate-50 p-4 text-sm">
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Invoice</span>
-                  <span className="text-right font-medium text-slate-950">
+              <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+                <div>
+                  <p className="text-xs text-slate-500">Invoice</p>
+                  <p className="font-semibold text-slate-950">
                     {rekber.invoice}
-                  </span>
+                  </p>
                 </div>
 
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Item</span>
-                  <span className="text-right font-medium text-slate-950">
+                <div>
+                  <p className="text-xs text-slate-500">Item</p>
+                  <p className="font-semibold text-slate-950">
                     {rekber.itemName}
-                  </span>
+                  </p>
                 </div>
 
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Total Bayar</span>
-                  <span className="text-right font-bold text-slate-950">
+                <div>
+                  <p className="text-xs text-slate-500">Total Bayar</p>
+                  <p className="font-semibold text-slate-950">
                     {formatRupiah(rekber.totalAmount)}
-                  </span>
+                  </p>
                 </div>
 
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">Status</span>
-                  <span
-                    className={`text-right font-medium capitalize ${getStatusClass(
+                <div>
+                  <p className="text-xs text-slate-500">Status</p>
+                  <p
+                    className={`font-semibold capitalize ${getStatusClass(
                       rekber,
                       expired
                     )}`}
                   >
                     {getStatusText(rekber, expired)}
-                  </span>
+                  </p>
                 </div>
               </div>
 
               {expired && rekber.status === "cancelled" && (
-                <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">
+                <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                   Transaksi ini sudah expired dan dibatalkan. Akun sudah
                   dikembalikan menjadi tersedia.
-                </p>
+                </div>
               )}
 
               {expired && rekber.status === "waiting_payment" && (
-                <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">
+                <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                   Batas waktu pembayaran sudah lewat.
-                </p>
+                </div>
               )}
 
               {rekber.status !== "waiting_payment" && (
-                <p className="mt-4 rounded-xl bg-slate-100 p-3 text-sm text-slate-600">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                   Transaksi ini sudah tidak berada pada status menunggu
                   pembayaran.
-                </p>
+                </div>
               )}
 
               <Button
-                onClick={simulateSuccessPayment}
-                className="mt-6 h-11 w-full"
+                type="button"
                 disabled={!canPay}
+                onClick={simulateSuccessPayment}
+                className="w-full"
               >
                 {payLoading ? "Memproses..." : "Simulasikan Dana Masuk"}
               </Button>
@@ -287,6 +284,6 @@ export default function MockRekberPaymentPage() {
           )}
         </CardContent>
       </Card>
-    </main>
+    </div>
   );
 }

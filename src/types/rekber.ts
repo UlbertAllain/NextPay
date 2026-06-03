@@ -1,5 +1,3 @@
-import type { Timestamp } from "firebase/firestore";
-
 export type RekberStatus =
   | "waiting_payment"
   | "holding_fund"
@@ -12,9 +10,7 @@ export type RekberStatus =
 
 export type RekberPaymentStatus =
   | "unpaid"
-  | "waiting_verification"
   | "paid"
-  | "rejected"
   | "expired"
   | "refunded";
 
@@ -37,27 +33,17 @@ export type RekberTransaction = {
   sourceId?: string | null;
 
   status: RekberStatus;
-  paymentStatus?: RekberPaymentStatus;
+  paymentStatus: RekberPaymentStatus;
 
-  paymentProofUrl?: string | null;
-  paymentProofPublicId?: string | null;
-  paymentProofUploadedAt?: Date | Timestamp | null;
+  createdAt: unknown;
+  updatedAt: unknown;
 
-  paymentVerifiedBy?: string | null;
-  paymentVerifiedAt?: Date | Timestamp | null;
-
-  paymentRejectedReason?: string | null;
-  paymentRejectedAt?: Date | Timestamp | null;
-
-  paidAt?: Date | Timestamp | null;
-  expiredAt?: Date | Timestamp | null;
-  cancelledAt?: Date | Timestamp | null;
-  deliveredAt?: Date | Timestamp | null;
-  completedAt?: Date | Timestamp | null;
-  disputedAt?: Date | Timestamp | null;
-  refundedAt?: Date | Timestamp | null;
-  releasedByAdminAt?: Date | Timestamp | null;
-
-  createdAt: Date | Timestamp;
-  updatedAt: Date | Timestamp;
+  paidAt?: unknown;
+  deliveredAt?: unknown;
+  completedAt?: unknown;
+  disputedAt?: unknown;
+  refundedAt?: unknown;
+  releasedByAdminAt?: unknown;
+  expiredAt?: unknown;
+  cancelledAt?: unknown;
 };

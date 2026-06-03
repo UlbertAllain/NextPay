@@ -16,7 +16,6 @@ import { COLLECTIONS } from "@/constants/collections";
 import { RekberTransaction } from "@/types/rekber";
 import { addBalanceToUser } from "@/services/wallet-service";
 import { createNotification } from "@/services/notification-service";
-import { uploadImageToCloudinary } from "@/services/cloudinary-service";
 import { assertUserNotSuspended } from "@/services/user-service";
 import {
   markAccountListingSold,
@@ -118,16 +117,6 @@ export async function createRekberTransaction(input: CreateRekberInput) {
       status: "waiting_payment",
       paymentStatus: "unpaid",
 
-      paymentProofUrl: null,
-      paymentProofPublicId: null,
-      paymentProofUploadedAt: null,
-
-      paymentVerifiedBy: null,
-      paymentVerifiedAt: null,
-
-      paymentRejectedReason: null,
-      paymentRejectedAt: null,
-
       paidAt: null,
       expiredAt: getRekberExpiredAt(),
       cancelledAt: null,
@@ -203,166 +192,6 @@ export async function getAllRekberTransactions() {
     id: document.id,
     ...document.data(),
   })) as RekberTransaction[];
-}
-
-export async function uploadRekberPaymentProof(
-  rekberId: string,
-  buyerId: string,
-  file: File
-) {
-  const rekberRef = doc(db, COLLECTIONS.REKBER, rekberId);
-  const snapshot = await getDoc(rekberRef);
-
-  if (!snapshot.exists()) {
-    throw new Error("Transaksi rekber tidak ditemukan");
-  }
-
-  const rekber = {
-    id: snapshot.id,
-    ...snapshot.data(),
-  } as RekberTransaction;
-
-  if (rekber.buyerId !== buyerId) {
-    throw new Error("Anda tidak memiliki akses ke transaksi ini");
-  }
-
-  await assertUserNotSuspended(buyerId);
-
-  if (rekber.status !== "waiting_payment") {
-    throw new Error("Bukti pembayaran hanya bisa diupload saat menunggu pembayaran");
-  }
-
-  if (
-    rekber.paymentStatus !== "unpaid" &&
-    rekber.paymentStatus !== "rejected"
-  ) {
-    throw new Error("Status pembayaran tidak bisa menerima bukti baru");
-  }
-
-  const expiredAt = parseFirestoreDate(rekber.expiredAt);
-
-  if (expiredAt && expiredAt.getTime() < Date.now()) {
-    await cancelExpiredRekberTransaction(rekberId);
-    throw new Error("Pembayaran sudah melewati batas waktu");
-  }
-
-  const uploaded = await uploadImageToCloudinary(file);
-
-  await updateDoc(rekberRef, {
-    paymentStatus: "waiting_verification",
-    paymentProofUrl: uploaded.url,
-    paymentProofPublicId: uploaded.publicId,
-    paymentProofUploadedAt: serverTimestamp(),
-    paymentRejectedReason: null,
-    paymentRejectedAt: null,
-    updatedAt: serverTimestamp(),
-  });
-
-  await createNotification({
-    userId: buyerId,
-    title: "Bukti Pembayaran Diupload",
-    message: `Bukti pembayaran untuk ${rekber.itemName} sedang menunggu verifikasi admin.`,
-    type: "rekber",
-  });
-
-  return uploaded;
-}
-
-export async function approveRekberPaymentProof(
-  rekberId: string,
-  adminId: string
-) {
-  const rekberRef = doc(db, COLLECTIONS.REKBER, rekberId);
-  const snapshot = await getDoc(rekberRef);
-
-  if (!snapshot.exists()) {
-    throw new Error("Transaksi rekber tidak ditemukan");
-  }
-
-  const rekber = {
-    id: snapshot.id,
-    ...snapshot.data(),
-  } as RekberTransaction;
-
-  if (rekber.status !== "waiting_payment") {
-    throw new Error("Rekber tidak berada di status waiting_payment");
-  }
-
-  if (rekber.paymentStatus !== "waiting_verification") {
-    throw new Error("Pembayaran belum menunggu verifikasi admin");
-  }
-
-  if (!rekber.paymentProofUrl) {
-    throw new Error("Bukti pembayaran belum tersedia");
-  }
-
-  await updateDoc(rekberRef, {
-    status: "holding_fund",
-    paymentStatus: "paid",
-    paymentVerifiedBy: adminId,
-    paymentVerifiedAt: serverTimestamp(),
-    paidAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-
-  await createNotification({
-    userId: rekber.buyerId,
-    title: "Pembayaran Diverifikasi",
-    message: `Pembayaran untuk ${rekber.itemName} sudah disetujui admin.`,
-    type: "rekber",
-  });
-
-  if (rekber.sellerId) {
-    await createNotification({
-      userId: rekber.sellerId,
-      title: "Rekber Baru Dibayar",
-      message: `Buyer sudah membayar ${rekber.itemName}. Silakan kirim akun.`,
-      type: "rekber",
-    });
-  }
-}
-
-export async function rejectRekberPaymentProof(
-  rekberId: string,
-  reason: string
-) {
-  const rekberRef = doc(db, COLLECTIONS.REKBER, rekberId);
-  const snapshot = await getDoc(rekberRef);
-
-  if (!snapshot.exists()) {
-    throw new Error("Transaksi rekber tidak ditemukan");
-  }
-
-  const rekber = {
-    id: snapshot.id,
-    ...snapshot.data(),
-  } as RekberTransaction;
-
-  if (rekber.status !== "waiting_payment") {
-    throw new Error("Rekber tidak berada di status waiting_payment");
-  }
-
-  if (rekber.paymentStatus !== "waiting_verification") {
-    throw new Error("Pembayaran belum menunggu verifikasi admin");
-  }
-
-  if (!reason.trim()) {
-    throw new Error("Alasan penolakan wajib diisi");
-  }
-
-  await updateDoc(rekberRef, {
-    paymentStatus: "rejected",
-    paymentRejectedReason: reason.trim(),
-    paymentRejectedAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-
-  await createNotification({
-    userId: rekber.buyerId,
-    title: "Bukti Pembayaran Ditolak",
-    message: `Bukti pembayaran untuk ${rekber.itemName} ditolak. Alasan: ${reason.trim()}`,
-    type: "rekber",
-  });
 }
 
 export async function markRekberAsPaid(rekberId: string) {

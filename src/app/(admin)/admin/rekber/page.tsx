@@ -2,14 +2,11 @@
 
 import { useEffect, useState } from "react";
 
-import { useAuth } from "@/components/providers/auth-provider";
 import {
   disputeRekber,
   getAllRekberTransactions,
   refundRekberToBuyer,
   releaseDisputedRekberToSeller,
-  approveRekberPaymentProof,
-  rejectRekberPaymentProof,
 } from "@/services/rekber-service";
 import { RekberTransaction } from "@/types/rekber";
 import { formatRupiah } from "@/lib/format";
@@ -46,27 +43,7 @@ function getStatusBadgeClass(status: string) {
   }
 }
 
-function getPaymentStatusBadgeClass(status?: string | null) {
-  switch (status) {
-    case "paid":
-      return "bg-green-50 text-green-700";
-    case "waiting_verification":
-      return "bg-yellow-50 text-yellow-700";
-    case "rejected":
-      return "bg-red-50 text-red-700";
-    case "expired":
-      return "bg-slate-100 text-slate-700";
-    case "refunded":
-      return "bg-purple-50 text-purple-700";
-    case "unpaid":
-    default:
-      return "bg-slate-100 text-slate-700";
-  }
-}
-
 export default function AdminRekberPage() {
-  const { firebaseUser } = useAuth();
-
   const [items, setItems] = useState<RekberTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -88,59 +65,6 @@ export default function AdminRekberPage() {
   useEffect(() => {
     loadRekber();
   }, []);
-
-  async function handleApprovePayment(id: string) {
-    if (!firebaseUser) {
-      alert("Admin belum login");
-      return;
-    }
-
-    const confirmed = confirm("Approve bukti pembayaran ini?");
-
-    if (!confirmed) return;
-
-    try {
-      setActionLoadingId(id);
-
-      await approveRekberPaymentProof(id, firebaseUser.uid);
-      await loadRekber();
-
-      alert("Pembayaran berhasil diverifikasi");
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Gagal memverifikasi pembayaran";
-
-      alert(message);
-    } finally {
-      setActionLoadingId(null);
-    }
-  }
-
-  async function handleRejectPayment(id: string) {
-    const reason = prompt("Masukkan alasan penolakan bukti pembayaran:");
-
-    if (!reason?.trim()) return;
-
-    try {
-      setActionLoadingId(id);
-
-      await rejectRekberPaymentProof(id, reason.trim());
-      await loadRekber();
-
-      alert("Bukti pembayaran ditolak");
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Gagal menolak bukti pembayaran";
-
-      alert(message);
-    } finally {
-      setActionLoadingId(null);
-    }
-  }
 
   async function handleDispute(id: string) {
     const confirmed = confirm("Masukkan transaksi ini ke status dispute?");
@@ -205,8 +129,8 @@ export default function AdminRekberPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-950">Admin Rekber</h1>
         <p className="mt-2 text-sm text-slate-500">
-          Pantau transaksi rekber. Admin menangani verifikasi bukti pembayaran,
-          dispute, refund, release manual, dan fraud handling.
+          Pantau transaksi rekber. Admin hanya menangani dispute, refund,
+          release manual, dan fraud handling.
         </p>
       </div>
 
@@ -224,7 +148,7 @@ export default function AdminRekberPage() {
             </p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1300px] text-sm">
+              <table className="w-full min-w-[1100px] text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-slate-500">
                     <th className="py-3 pr-4 font-medium">Invoice</th>
@@ -236,8 +160,6 @@ export default function AdminRekberPage() {
                     <th className="py-3 pr-4 font-medium">Fee</th>
                     <th className="py-3 pr-4 font-medium">Total</th>
                     <th className="py-3 pr-4 font-medium">Status</th>
-                    <th className="py-3 pr-4 font-medium">Payment</th>
-                    <th className="py-3 pr-4 font-medium">Bukti</th>
                     <th className="py-3 pr-4 font-medium">Action</th>
                   </tr>
                 </thead>
@@ -245,7 +167,6 @@ export default function AdminRekberPage() {
                 <tbody>
                   {items.map((item) => {
                     const isActionLoading = actionLoadingId === item.id;
-                    const paymentStatus = item.paymentStatus || "unpaid";
 
                     return (
                       <tr
@@ -326,71 +247,7 @@ export default function AdminRekberPage() {
                         </td>
 
                         <td className="py-4 pr-4">
-                          <span
-                            className={`inline-flex rounded-full px-3 py-1 text-xs font-medium capitalize ${getPaymentStatusBadgeClass(
-                              paymentStatus
-                            )}`}
-                          >
-                            {formatStatus(paymentStatus)}
-                          </span>
-
-                          {item.paymentRejectedReason && (
-                            <p className="mt-2 max-w-[220px] text-xs leading-5 text-red-600">
-                              Alasan: {item.paymentRejectedReason}
-                            </p>
-                          )}
-                        </td>
-
-                        <td className="py-4 pr-4">
-                          {item.paymentProofUrl ? (
-                            <a
-                              href={item.paymentProofUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="block"
-                            >
-                              <img
-                                src={item.paymentProofUrl}
-                                alt="Bukti pembayaran"
-                                className="h-24 w-24 rounded-lg border border-slate-200 object-cover"
-                              />
-                              <span className="mt-2 block text-xs font-medium text-blue-600">
-                                Lihat bukti
-                              </span>
-                            </a>
-                          ) : (
-                            <span className="text-xs text-slate-400">
-                              Belum ada bukti
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="py-4 pr-4">
-                          <div className="flex min-w-[190px] flex-col gap-2">
-                            {item.paymentStatus === "waiting_verification" && (
-                              <>
-                                <Button
-                                  onClick={() => handleApprovePayment(item.id)}
-                                  disabled={isActionLoading}
-                                  className="bg-green-600 hover:bg-green-700"
-                                >
-                                  {isActionLoading
-                                    ? "Memproses..."
-                                    : "Approve Pembayaran"}
-                                </Button>
-
-                                <Button
-                                  variant="danger"
-                                  onClick={() => handleRejectPayment(item.id)}
-                                  disabled={isActionLoading}
-                                >
-                                  {isActionLoading
-                                    ? "Memproses..."
-                                    : "Reject Pembayaran"}
-                                </Button>
-                              </>
-                            )}
-
+                          <div className="flex min-w-[170px] flex-col gap-2">
                             {(item.status === "holding_fund" ||
                               item.status === "waiting_confirmation") && (
                               <Button
@@ -427,8 +284,7 @@ export default function AdminRekberPage() {
                               </>
                             )}
 
-                            {item.paymentStatus !== "waiting_verification" &&
-                              item.status !== "holding_fund" &&
+                            {item.status !== "holding_fund" &&
                               item.status !== "waiting_confirmation" &&
                               item.status !== "dispute" && (
                                 <span className="text-xs text-slate-500">

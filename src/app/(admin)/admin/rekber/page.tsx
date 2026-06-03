@@ -36,6 +36,8 @@ function getStatusBadgeClass(status: string) {
       return "bg-red-50 text-red-700";
     case "refunded":
       return "bg-purple-50 text-purple-700";
+    case "cancelled":
+      return "bg-red-50 text-red-700";
     default:
       return "bg-slate-100 text-slate-700";
   }

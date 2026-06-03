@@ -115,7 +115,7 @@ export default function WalletPage() {
     const parsedAmount = Number(amount);
 
     if (!parsedAmount || parsedAmount <= 0) {
-      alert("Nominal withdrawal tidak valid");
+      alert("Nominal pencairan tidak valid");
       return;
     }
 
@@ -125,13 +125,13 @@ export default function WalletPage() {
     }
 
     if (!bankName || !accountNumber || !accountHolderName) {
-      alert("Lengkapi data rekening withdrawal");
+      alert("Lengkapi data rekening pencairan");
       return;
     }
 
     const confirmed = confirm(
-      "Ajukan withdrawal saldo? Saldo akan langsung ditahan sampai admin memproses pengajuan."
-    );
+  "Ajukan pencairan saldo? Dalam mode mock, pencairan akan otomatis disetujui dan saldo langsung berkurang."
+);
 
     if (!confirmed) return;
 
@@ -154,18 +154,18 @@ export default function WalletPage() {
       await loadData();
     } catch (error) {
       console.error(error);
-      alert("Gagal mengajukan withdrawal");
+      alert("Gagal mengajukan pencairan saldo");
     } finally {
       setSubmitLoading(false);
     }
-  }
+  } 
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-950">Wallet</h1>
         <p className="mt-2 text-sm text-slate-500">
-          Pantau saldo, riwayat transaksi, dan ajukan withdrawal saldo seller.
+          Pantau saldo, riwayat transaksi, dan ajukan pencairan saldo seller.
         </p>
       </div>
 

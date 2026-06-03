@@ -42,7 +42,7 @@ export async function createAccountListing(input: CreateAccountListingInput) {
     heroes: input.heroes ?? null,
     images: input.images ?? [],
     verified: false,
-    status: "published",
+    status: "pending_review",
     reservedRekberId: null,
     reservedAt: null,
     soldAt: null,
@@ -93,6 +93,20 @@ export async function getSellerAccountListings(sellerId: string) {
   })) as AccountListing[];
 }
 
+export async function getAllAccountListings() {
+  const q = query(
+    collection(db, COLLECTIONS.ACCOUNT_LISTINGS),
+    orderBy("createdAt", "desc")
+  );
+
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs.map((document) => ({
+    id: document.id,
+    ...document.data(),
+  })) as AccountListing[];
+} 
+
 export async function getAccountListingById(id: string) {
   const snapshot = await getDoc(doc(db, COLLECTIONS.ACCOUNT_LISTINGS, id));
 
@@ -104,6 +118,20 @@ export async function getAccountListingById(id: string) {
     id: snapshot.id,
     ...snapshot.data(),
   } as AccountListing;
+}
+
+export async function getPublishedAccountListingById(id: string) {
+  const listing = await getAccountListingById(id);
+
+  if (!listing) {
+    return null;
+  }
+
+  if (listing.status !== "published") {
+    return null;
+  }
+
+  return listing;
 }
 
 export async function reserveAccountListing(id: string, rekberId: string) {
@@ -155,6 +183,20 @@ export async function hideAccountListing(id: string) {
   });
 }
 
+export async function publishAccountListing(id: string) {
+  await updateDoc(doc(db, COLLECTIONS.ACCOUNT_LISTINGS, id), {
+    status: "published",
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function rejectAccountListing(id: string) {
+  await updateDoc(doc(db, COLLECTIONS.ACCOUNT_LISTINGS, id), {
+    status: "rejected",
+    updatedAt: serverTimestamp(),
+  });
+}
+
 export async function updateAccountListing(
   id: string,
   input: Partial<{
@@ -169,12 +211,44 @@ export async function updateAccountListing(
     images: string[];
   }>
 ) {
-  await updateDoc(doc(db, COLLECTIONS.ACCOUNT_LISTINGS, id), {
+  const listingRef = doc(db, COLLECTIONS.ACCOUNT_LISTINGS, id);
+  const snapshot = await getDoc(listingRef);
+
+  if (!snapshot.exists()) {
+    throw new Error("Listing tidak ditemukan");
+  }
+
+  const listing = {
+    id: snapshot.id,
+    ...snapshot.data(),
+  } as AccountListing;
+
+  if (listing.status === "reserved" || listing.status === "sold") {
+    throw new Error("Listing yang sudah masuk transaksi tidak bisa diedit");
+  }
+
+  await updateDoc(listingRef, {
     ...input,
     updatedAt: serverTimestamp(),
   });
 }
 
 export async function deleteAccountListing(id: string) {
-  await deleteDoc(doc(db, COLLECTIONS.ACCOUNT_LISTINGS, id));
+  const listingRef = doc(db, COLLECTIONS.ACCOUNT_LISTINGS, id);
+  const snapshot = await getDoc(listingRef);
+
+  if (!snapshot.exists()) {
+    throw new Error("Listing tidak ditemukan");
+  }
+
+  const listing = {
+    id: snapshot.id,
+    ...snapshot.data(),
+  } as AccountListing;
+
+  if (listing.status === "reserved" || listing.status === "sold") {
+    throw new Error("Listing yang sudah masuk transaksi tidak bisa dihapus");
+  }
+
+  await deleteDoc(listingRef);
 }

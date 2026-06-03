@@ -2,7 +2,8 @@
 
 import { LogoutButton } from "@/components/auth/logout-button";
 import { useAuth } from "@/components/providers/auth-provider";
-
+import Link from "next/link";
+import { Bell } from "lucide-react";
 type DashboardTopbarProps = {
   title: string;
   description?: string;
@@ -30,12 +31,14 @@ export function DashboardTopbar({ title, description }: DashboardTopbarProps) {
           <div className="hidden text-right md:block">
             <p className="text-sm font-medium text-slate-950">{displayName}</p>
             <p className="text-xs text-slate-500">{email}</p>
+            <p className="text-xs capitalize text-slate-400">
+  {appUser?.role ?? "user"}
+</p>
           </div>
 
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-700">
             {displayName.charAt(0).toUpperCase()}
           </div>
-
           <LogoutButton />
         </div>
       </div>

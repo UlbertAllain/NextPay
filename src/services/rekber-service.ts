@@ -10,7 +10,9 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-
+import {
+  runTransaction,
+} from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { COLLECTIONS } from "@/constants/collections";
 import { RekberTransaction } from "@/types/rekber";
@@ -42,39 +44,77 @@ function getRekberExpiredAt() {
 
 export async function createRekberTransaction(input: CreateRekberInput) {
   const invoice = `RKB-${Date.now()}`;
+  const rekberRef = doc(collection(db, COLLECTIONS.REKBER));
 
-  const payload = {
-    invoice,
-    buyerId: input.buyerId,
-    sellerId: input.sellerId ?? null,
-    sellerContact: input.sellerContact,
-    itemName: input.itemName,
-    itemDescription: input.itemDescription,
-    amount: input.amount,
-    fee: input.fee,
-    totalAmount: input.amount + input.fee,
-    sourceType: input.sourceType ?? "manual",
-    sourceId: input.sourceId ?? null,
-    status: "waiting_payment",
-    paymentStatus: "unpaid",
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-    expiredAt: getRekberExpiredAt(),
-cancelledAt: null,
-  };
+  if (input.buyerId === input.sellerId) {
+  throw new Error("Buyer tidak bisa membeli listing milik sendiri");
+}
 
-  const docRef = await addDoc(collection(db, COLLECTIONS.REKBER), payload);
+  return await runTransaction(db, async (transaction) => {
+    let listingRef = null;
 
-  if (payload.sourceType === "account_listing" && payload.sourceId) {
-    await reserveAccountListing(payload.sourceId, docRef.id);
-  }
+    if (input.sourceType === "account_listing" && input.sourceId) {
+      listingRef = doc(db, COLLECTIONS.ACCOUNT_LISTINGS, input.sourceId);
 
-  return {
-    id: docRef.id,
-    ...payload,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  } as unknown as RekberTransaction;
+      const listingSnapshot = await transaction.get(listingRef);
+
+      if (!listingSnapshot.exists()) {
+        throw new Error("Listing akun tidak ditemukan");
+      }
+
+      const listingData = listingSnapshot.data();
+
+      if (listingData.sellerId === input.buyerId) {
+  throw new Error("Buyer tidak bisa membeli listing milik sendiri");
+}
+
+      if (listingData.status !== "published") {
+        throw new Error("Listing akun sudah tidak tersedia");
+      }
+
+      if (listingData.sellerId !== input.sellerId) {
+        throw new Error("Seller listing tidak sesuai");
+      }
+    }
+
+    const payload = {
+      invoice,
+      buyerId: input.buyerId,
+      sellerId: input.sellerId ?? null,
+      sellerContact: input.sellerContact,
+      itemName: input.itemName,
+      itemDescription: input.itemDescription,
+      amount: input.amount,
+      fee: input.fee,
+      totalAmount: input.amount + input.fee,
+      sourceType: input.sourceType ?? "manual",
+      sourceId: input.sourceId ?? null,
+      status: "waiting_payment",
+      paymentStatus: "unpaid",
+      expiredAt: getRekberExpiredAt(),
+      cancelledAt: null,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    transaction.set(rekberRef, payload);
+
+    if (listingRef) {
+      transaction.update(listingRef, {
+        status: "reserved",
+        reservedRekberId: rekberRef.id,
+        reservedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    return {
+      id: rekberRef.id,
+      ...payload,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as unknown as RekberTransaction;
+  });
 }
 
 export async function getRekberByBuyerId(buyerId: string) {

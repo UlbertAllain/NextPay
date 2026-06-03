@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 
 const navItems = [
   { label: "Top Up Game", href: "/topup" },
-  { label: "Akun ML", href: "/akun-ml" },
+  { label: "Akun Game", href: "/akun-ml" },
   { label: "Rekber", href: "/rekber" },
   { label: "Subscription", href: "/subscription" },
   { label: "Cek Transaksi", href: "/cek-transaksi" },

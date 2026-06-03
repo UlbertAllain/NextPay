@@ -68,17 +68,18 @@ export async function createWithdrawalRequest(input: {
     bankName: input.bankName,
     accountNumber: input.accountNumber,
     accountHolderName: input.accountHolderName,
-    status: "pending",
-    note: null,
+    status: "approved",
+    note: "Auto-approved mock withdrawal",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+    approvedAt: serverTimestamp(),
   });
 
-  await addDoc(collection(db, "wallet_transactions"), {
+  await addDoc(collection(db, COLLECTIONS.WALLET_TRANSACTIONS), {
     userId: input.userId,
     type: "withdrawal",
     amount: -input.amount,
-    description: "Pengajuan withdrawal saldo",
+    description: "Withdrawal saldo berhasil (mock auto-approved)",
     referenceId: withdrawalRef.id,
     createdAt: serverTimestamp(),
   });
@@ -115,6 +116,11 @@ export async function getAllWithdrawals() {
   })) as WithdrawalRequest[];
 }
 
+/**
+ * Legacy admin approval.
+ * Untuk mode mock sekarang createWithdrawalRequest langsung approved.
+ * Function ini tetap disimpan untuk nanti kalau withdrawal manual diaktifkan lagi.
+ */
 export async function approveWithdrawal(withdrawalId: string) {
   const withdrawalRef = doc(db, COLLECTIONS.WITHDRAWALS, withdrawalId);
   const snapshot = await getDoc(withdrawalRef);
@@ -136,6 +142,11 @@ export async function approveWithdrawal(withdrawalId: string) {
   });
 }
 
+/**
+ * Legacy admin rejection.
+ * Untuk mode mock auto-approved, function ini hanya relevan jika nanti
+ * kamu mengembalikan status awal withdrawal ke pending.
+ */
 export async function rejectWithdrawal(withdrawalId: string, note?: string) {
   const withdrawalRef = doc(db, COLLECTIONS.WITHDRAWALS, withdrawalId);
   const snapshot = await getDoc(withdrawalRef);
@@ -165,7 +176,7 @@ export async function rejectWithdrawal(withdrawalId: string, note?: string) {
     updatedAt: serverTimestamp(),
   });
 
-  await addDoc(collection(db, "wallet_transactions"), {
+  await addDoc(collection(db, COLLECTIONS.WALLET_TRANSACTIONS), {
     userId: withdrawal.userId,
     type: "adjustment",
     amount: withdrawal.amount,
@@ -173,4 +184,4 @@ export async function rejectWithdrawal(withdrawalId: string, note?: string) {
     referenceId: withdrawal.id,
     createdAt: serverTimestamp(),
   });
-}
+} 

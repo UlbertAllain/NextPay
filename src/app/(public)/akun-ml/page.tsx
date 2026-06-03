@@ -2,19 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Search, SlidersHorizontal } from "lucide-react";
 
 import { getPublishedAccountListings } from "@/services/account-listing-service";
 import { AccountGame, AccountListing } from "@/types/account-listing";
-
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
-const gameFilters: {
-  label: string;
-  value: "all" | AccountGame;
-}[] = [
-  { label: "Semua", value: "all" },
+type SortOption = "newest" | "price_low" | "price_high";
+type GameFilter = "all" | AccountGame;
+
+const games: { label: string; value: GameFilter }[] = [
+  { label: "Semua Game", value: "all" },
   { label: "Mobile Legends", value: "mobile-legends" },
   { label: "PUBG Mobile", value: "pubg-mobile" },
   { label: "Free Fire", value: "free-fire" },
@@ -36,197 +33,176 @@ function formatGameName(game: string) {
     .join(" ");
 }
 
-export default function AkunMlPage() {
+export default function AccountMarketplacePage() {
   const [items, setItems] = useState<AccountListing[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedGame, setSelectedGame] = useState<"all" | AccountGame>("all");
-  const [search, setSearch] = useState("");
 
-  async function loadListings() {
+  const [search, setSearch] = useState("");
+  const [gameFilter, setGameFilter] = useState<GameFilter>("all");
+  const [sort, setSort] = useState<SortOption>("newest");
+
+  async function loadData() {
     try {
       setLoading(true);
 
       const data = await getPublishedAccountListings();
-
       setItems(data);
     } catch (error) {
       console.error(error);
-      alert("Gagal mengambil listing akun");
+      alert("Gagal mengambil akun marketplace");
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadListings();
+    loadData();
   }, []);
 
   const filteredItems = useMemo(() => {
-    return items.filter((item) => {
-      const matchGame =
-        selectedGame === "all" ? true : item.game === selectedGame;
+    const keyword = search.trim().toLowerCase();
 
-      const keyword = search.toLowerCase();
-
-      const matchSearch =
+    let result = items.filter((item) => {
+      const matchKeyword =
+        !keyword ||
         item.title.toLowerCase().includes(keyword) ||
         item.description.toLowerCase().includes(keyword) ||
-        item.rank?.toLowerCase().includes(keyword) ||
-        formatGameName(item.game).toLowerCase().includes(keyword);
+        item.rank?.toLowerCase().includes(keyword);
 
-      return matchGame && matchSearch;
+      const matchGame = gameFilter === "all" || item.game === gameFilter;
+
+      return matchKeyword && matchGame;
     });
-  }, [items, selectedGame, search]);
+
+    if (sort === "price_low") {
+      result = [...result].sort((a, b) => a.price - b.price);
+    }
+
+    if (sort === "price_high") {
+      result = [...result].sort((a, b) => b.price - a.price);
+    }
+
+    return result;
+  }, [items, search, gameFilter, sort]);
 
   return (
-    <section className="mx-auto max-w-7xl px-4 py-10">
-      <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-950">
-            Marketplace Akun Game
-          </h1>
-
-          <p className="mt-2 max-w-2xl text-slate-600">
-            Cari akun game dari seller NextPay. Nantinya pembelian akan
-            menggunakan sistem rekber agar dana buyer ditahan sampai akun
-            diterima.
-          </p>
-        </div>
-
-        <Link href="/seller/accounts">
-          <Button>Jual Akun Game</Button>
-        </Link>
+    <section className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-950">
+          Marketplace Akun Game
+        </h1>
+        <p className="mt-2 text-sm text-slate-500">
+          Beli akun game menggunakan rekber internal NextPay.
+        </p>
       </div>
 
-      <div className="mb-6 grid gap-3 md:grid-cols-[1fr_auto]">
-        <div className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4">
-          <Search size={18} className="text-slate-400" />
-
+      <Card>
+        <CardContent className="grid gap-4 p-4 md:grid-cols-[1fr_220px_220px]">
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Cari akun berdasarkan judul, rank, game..."
-            className="w-full bg-transparent text-sm outline-none"
+            placeholder="Cari akun, rank, skin, atau deskripsi..."
+            className="h-11 rounded-xl border border-slate-200 px-4 text-sm outline-none focus:border-blue-500"
           />
-        </div>
 
-        <Button variant="secondary" className="h-11 gap-2">
-          <SlidersHorizontal size={18} />
-          Filter
-        </Button>
-      </div>
+          <select
+            value={gameFilter}
+            onChange={(event) => setGameFilter(event.target.value as GameFilter)}
+            className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-blue-500"
+          >
+            {games.map((game) => (
+              <option key={game.value} value={game.value}>
+                {game.label}
+              </option>
+            ))}
+          </select>
 
-      <div className="mb-6 flex gap-2 overflow-x-auto pb-1">
-        {gameFilters.map((filter) => {
-          const isActive = selectedGame === filter.value;
-
-          return (
-            <button
-              key={filter.value}
-              type="button"
-              onClick={() => setSelectedGame(filter.value)}
-              className={[
-                "whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition",
-                isActive
-                  ? "border-blue-600 bg-blue-600 text-white"
-                  : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600",
-              ].join(" ")}
-            >
-              {filter.label}
-            </button>
-          );
-        })}
-      </div>
+          <select
+            value={sort}
+            onChange={(event) => setSort(event.target.value as SortOption)}
+            className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-blue-500"
+          >
+            <option value="newest">Terbaru</option>
+            <option value="price_low">Harga Terendah</option>
+            <option value="price_high">Harga Tertinggi</option>
+          </select>
+        </CardContent>
+      </Card>
 
       {loading ? (
-        <div className="grid gap-4 md:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <Card key={index}>
-              <CardContent className="p-5">
-                <div className="mb-4 h-44 animate-pulse rounded-2xl bg-slate-100" />
-                <div className="h-5 w-2/3 animate-pulse rounded bg-slate-100" />
-                <div className="mt-3 h-4 w-1/2 animate-pulse rounded bg-slate-100" />
-                <div className="mt-6 h-10 w-full animate-pulse rounded-xl bg-slate-100" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <p className="text-sm text-slate-500">Memuat data akun...</p>
       ) : filteredItems.length === 0 ? (
         <Card>
-          <CardContent className="p-8 text-center">
+          <CardContent className="p-6">
             <h2 className="font-semibold text-slate-950">
-              Belum ada listing akun
+              Akun tidak ditemukan
             </h2>
-
             <p className="mt-2 text-sm text-slate-500">
-              Listing akun yang sudah dipublish seller akan muncul di sini.
+              Coba ubah keyword pencarian atau filter game.
             </p>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-3">
-          {filteredItems.map((item) => (
-            <Link key={item.id} href={`/akun-ml/${item.id}`}>
-              <Card className="overflow-hidden transition hover:-translate-y-1 hover:shadow-md">
-                <div className="flex h-44 items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800">
-                  <span className="rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white">
-                    {formatGameName(item.game)}
-                  </span>
-                </div>
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {filteredItems.map((item) => {
+            const imageUrl = item.images?.[0];
 
-                <CardContent className="p-5">
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-                      {item.rank || "No Rank"}
-                    </span>
-
-                    <span
-                      className={[
-                        "rounded-full px-3 py-1 text-xs font-medium",
-                        item.verified
-                          ? "bg-green-50 text-green-700"
-                          : "bg-slate-100 text-slate-500",
-                      ].join(" ")}
-                    >
-                      {item.verified ? "Verified" : "Unverified"}
-                    </span>
+            return (
+              <Link
+                key={item.id}
+                href={`/akun-ml/${item.id}`}
+                className="group overflow-hidden rounded-2xl border border-slate-200 bg-white transition hover:-translate-y-1 hover:border-blue-300 hover:shadow-lg"
+              >
+                {imageUrl ? (
+                  <img
+                    src={imageUrl}
+                    alt={item.title}
+                    className="h-48 w-full object-cover transition group-hover:scale-105"
+                  />
+                ) : (
+                  <div className="flex h-48 w-full items-center justify-center bg-slate-100 text-sm text-slate-400">
+                    No Image
                   </div>
+                )}
 
-                  <h2 className="line-clamp-2 font-semibold text-slate-950">
-                    {item.title}
-                  </h2>
-
-                  <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-500">
-                    {item.description}
+                <div className="space-y-3 p-4">
+                  <p className="text-xs font-medium text-blue-600">
+                    {formatGameName(item.game)}
                   </p>
 
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                    <div className="rounded-xl bg-slate-50 p-3">
-                      <p className="text-slate-500">Skin</p>
-                      <p className="font-semibold">{item.skins ?? "-"}</p>
-                    </div>
-
-                    <div className="rounded-xl bg-slate-50 p-3">
-                      <p className="text-slate-500">Hero</p>
-                      <p className="font-semibold">{item.heroes ?? "-"}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 flex items-center justify-between gap-3">
-                    <p className="text-lg font-bold text-slate-950">
-                      {formatRupiah(item.price)}
+                  <div>
+                    <h2 className="line-clamp-1 font-semibold text-slate-950">
+                      {item.title}
+                    </h2>
+                    <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-500">
+                      {item.description}
                     </p>
-
-                    <span className="text-sm font-medium text-blue-600">
-                      Detail
-                    </span>
                   </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
+
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <Info label="Rank" value={item.rank || "-"} />
+                    <Info label="Skin" value={String(item.skins ?? "-")} />
+                    <Info label="Hero" value={String(item.heroes ?? "-")} />
+                  </div>
+
+                  <p className="text-lg font-bold text-slate-950">
+                    {formatRupiah(item.price)}
+                  </p>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       )}
     </section>
+  );
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-slate-50 p-2">
+      <p className="text-[10px] text-slate-400">{label}</p>
+      <p className="mt-1 truncate font-medium text-slate-700">{value}</p>
+    </div>
   );
 }

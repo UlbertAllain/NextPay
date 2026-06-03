@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 
 import { useAuth } from "@/components/providers/auth-provider";
 import {
@@ -9,6 +8,11 @@ import {
   disputeRekber,
   getRekberByBuyerId,
 } from "@/services/rekber-service";
+import {
+  createSellerReview,
+  getReviewByRekberAndBuyer,
+} from "@/services/seller-review-service";
+
 import { RekberTransaction } from "@/types/rekber";
 import { formatRupiah } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -37,6 +41,8 @@ function getStatusBadgeClass(status: string) {
       return "bg-red-50 text-red-700";
     case "refunded":
       return "bg-purple-50 text-purple-700";
+    case "cancelled":
+      return "bg-red-50 text-red-700";
     default:
       return "bg-slate-100 text-slate-700";
   }
@@ -56,6 +62,8 @@ function getBuyerStatusText(status: string) {
       return "Transaksi sedang dalam dispute dan menunggu keputusan admin.";
     case "refunded":
       return "Dana sudah dikembalikan.";
+    case "cancelled":
+      return "Transaksi dibatalkan karena pembayaran melewati batas waktu.";
     default:
       return "-";
   }
@@ -68,6 +76,18 @@ export default function UserRekberPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
+  const [reviewRatings, setReviewRatings] = useState<Record<string, number>>(
+    {}
+  );
+
+  const [reviewComments, setReviewComments] = useState<
+    Record<string, string>
+  >({});
+
+  const [submittedReviews, setSubmittedReviews] = useState<
+    Record<string, boolean>
+  >({});
+
   async function loadRekber() {
     if (!firebaseUser) {
       setItems([]);
@@ -79,7 +99,21 @@ export default function UserRekberPage() {
       setLoading(true);
 
       const data = await getRekberByBuyerId(firebaseUser.uid);
+
       setItems(data);
+
+      const reviewMap: Record<string, boolean> = {};
+
+      for (const item of data) {
+        const review = await getReviewByRekberAndBuyer(
+          item.id,
+          firebaseUser.uid
+        );
+
+        reviewMap[item.id] = !!review;
+      }
+
+      setSubmittedReviews(reviewMap);
     } catch (error) {
       console.error(error);
       alert("Gagal mengambil data rekber");
@@ -94,7 +128,7 @@ export default function UserRekberPage() {
 
   async function handleConfirm(id: string) {
     const confirmed = confirm(
-      "Konfirmasi transaksi selesai? Dana akan langsung dirilis ke seller."
+      "Konfirmasi transaksi selesai? Dana akan langsung dirilis ke Penjual."
     );
 
     if (!confirmed) return;
@@ -132,12 +166,44 @@ export default function UserRekberPage() {
     }
   }
 
+  async function handleSubmitReview(item: RekberTransaction) {
+    if (!firebaseUser) return;
+
+    const rating = reviewRatings[item.id] || 5;
+    const comment = reviewComments[item.id] || "";
+
+    if (!item.sellerId) {
+      alert("Penjual tidak ditemukan");
+      return;
+    }
+
+    try {
+      setActionLoadingId(item.id);
+
+      await createSellerReview({
+        rekberId: item.id,
+        buyerId: firebaseUser.uid,
+        sellerId: item.sellerId,
+        rating,
+        comment,
+      });
+
+      await loadRekber();
+    } catch (error) {
+      console.error(error);
+      alert("Gagal mengirim review");
+    } finally {
+      setActionLoadingId(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-950">
           Transaksi Rekber Saya
         </h1>
+
         <p className="mt-2 text-sm text-slate-500">
           Pantau transaksi rekber akun game yang kamu beli di marketplace
           NextPay.
@@ -193,11 +259,81 @@ export default function UserRekberPage() {
                         <p className="text-sm text-slate-500">
                           {getBuyerStatusText(item.status)}
                         </p>
+
+                        {item.status === "completed" &&
+                          !submittedReviews[item.id] && (
+                            <div className="mt-4 rounded-2xl border border-slate-200 p-4">
+                              <h3 className="font-semibold text-slate-950">
+                                Beri Review Penjual untuk Transaksi Ini
+                              </h3>
+
+                              <div className="mt-4">
+                                <label className="text-sm font-medium text-slate-700">
+                                  Rating
+                                </label>
+
+                                <select
+                                  className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none"
+                                  value={reviewRatings[item.id] || 5}
+                                  onChange={(event) =>
+                                    setReviewRatings((prev) => ({
+                                      ...prev,
+                                      [item.id]: Number(event.target.value),
+                                    }))
+                                  }
+                                >
+                                  <option value={5}>5 - Sangat Bagus</option>
+                                  <option value={4}>4 - Bagus</option>
+                                  <option value={3}>3 - Normal</option>
+                                  <option value={2}>2 - Buruk</option>
+                                  <option value={1}>1 - Sangat Buruk</option>
+                                </select>
+                              </div>
+
+                              <div className="mt-4">
+                                <label className="text-sm font-medium text-slate-700">
+                                  Komentar
+                                </label>
+
+                                <textarea
+                                  className="mt-2 min-h-[120px] w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none"
+                                  placeholder="Bagikan pengalaman transaksi dengan penjual ini..."
+                                  value={reviewComments[item.id] || ""}
+                                  onChange={(event) =>
+                                    setReviewComments((prev) => ({
+                                      ...prev,
+                                      [item.id]: event.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+
+                              <Button
+                                className="mt-4"
+                                onClick={() => handleSubmitReview(item)}
+                                disabled={isActionLoading}
+                              >
+                                {isActionLoading
+                                  ? "Mengirim..."
+                                  : "Kirim Review"}
+                              </Button>
+                            </div>
+                          )}
+
+                        {item.status === "completed" &&
+                          submittedReviews[item.id] && (
+                            <div className="mt-4 rounded-xl bg-green-50 p-3 text-sm text-green-700">
+                              Kamu sudah memberikan review untuk transaksi ini.
+                            </div>
+                          )}
                       </div>
 
                       <div className="min-w-[220px] space-y-3 rounded-2xl bg-slate-50 p-4">
                         <div>
-                          <p className="text-xs text-slate-500">Total Bayar</p>
+                          <p className="text-xs text-slate-500">
+                            Total Bayar
+                          </p>
+
                           <p className="mt-1 font-bold text-slate-950">
                             {formatRupiah(item.totalAmount)}
                           </p>
@@ -205,10 +341,13 @@ export default function UserRekberPage() {
 
                         <div className="space-y-2">
                           {item.status === "waiting_payment" && (
-                            <Button className="w-full">
-                              <Link href={`/mock-rekber-payment/${item.id}`}>
-                                Lanjut Bayar
-                              </Link>
+                            <Button
+                              className="w-full"
+                              onClick={() => {
+                                window.location.href = `/mock-rekber-payment/${item.id}`;
+                              }}
+                            >
+                              Lanjut Bayar
                             </Button>
                           )}
 

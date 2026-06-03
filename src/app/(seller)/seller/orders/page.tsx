@@ -42,6 +42,8 @@ function getStatusBadgeClass(status: string) {
       return "bg-red-50 text-red-700";
     case "refunded":
       return "bg-purple-50 text-purple-700";
+    case "cancelled":
+      return "bg-red-50 text-red-700";
     default:
       return "bg-slate-100 text-slate-700";
   }
@@ -59,6 +61,8 @@ function getSellerActionText(status: string) {
       return "Menunggu keputusan admin";
     case "refunded":
       return "Dana direfund ke buyer";
+    case "cancelled":
+      return "Transaksi dibatalkan karena buyer tidak menyelesaikan pembayaran.";
     default:
       return "-";
   }
@@ -139,7 +143,7 @@ export default function SellerOrdersPage() {
             <p className="text-sm text-slate-500">Memuat transaksi...</p>
           ) : items.length === 0 ? (
             <p className="text-sm text-slate-500">
-              Belum ada transaksi rekber untuk seller ini.
+              Belum ada transaksi rekber untuk penjual ini.
             </p>
           ) : (
             <div className="overflow-x-auto">

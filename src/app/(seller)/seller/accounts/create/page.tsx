@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { ChangeEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/components/providers/auth-provider";
 import { createAccountListing } from "@/services/account-listing-service";
+import { uploadImageToCloudinary } from "@/services/cloudinary-service";
 import { AccountGame } from "@/types/account-listing";
-
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -29,7 +29,38 @@ export default function CreateSellerAccountPage() {
   const [level, setLevel] = useState("");
   const [skins, setSkins] = useState("");
   const [heroes, setHeroes] = useState("");
+
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState("");
+
   const [loading, setLoading] = useState(false);
+
+  function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      setImageFile(null);
+      setImagePreviewUrl("");
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      alert("File harus berupa gambar");
+      event.target.value = "";
+      return;
+    }
+
+    const maxSize = 5 * 1024 * 1024;
+
+    if (file.size > maxSize) {
+      alert("Ukuran gambar maksimal 5MB");
+      event.target.value = "";
+      return;
+    }
+
+    setImageFile(file);
+    setImagePreviewUrl(URL.createObjectURL(file));
+  }
 
   async function handleSubmit() {
     if (!firebaseUser) {
@@ -38,7 +69,7 @@ export default function CreateSellerAccountPage() {
     }
 
     if (!title.trim()) {
-      alert("Judul listing wajib diisi");
+      alert("Judul akun wajib diisi");
       return;
     }
 
@@ -57,6 +88,13 @@ export default function CreateSellerAccountPage() {
     try {
       setLoading(true);
 
+      let images: string[] = [];
+
+      if (imageFile) {
+        const uploadedImage = await uploadImageToCloudinary(imageFile);
+        images = [uploadedImage.url];
+      }
+
       await createAccountListing({
         sellerId: firebaseUser.uid,
         game,
@@ -67,13 +105,14 @@ export default function CreateSellerAccountPage() {
         level: level ? Number(level) : undefined,
         skins: skins ? Number(skins) : undefined,
         heroes: heroes ? Number(heroes) : undefined,
+        images,
       });
 
-      alert("Listing berhasil dibuat");
+      alert("draft jual akun berhasil dibuat dan menunggu review admin");
       router.push("/seller/accounts");
     } catch (error) {
       console.error(error);
-      alert("Gagal membuat listing");
+      alert("Gagal membuat draft jual akun");
     } finally {
       setLoading(false);
     }
@@ -82,9 +121,10 @@ export default function CreateSellerAccountPage() {
   return (
     <section className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-950">Tambah Listing</h1>
+        <h1 className="text-2xl font-bold text-slate-950">Jual Akun Game</h1>
         <p className="mt-2 text-sm text-slate-500">
-          Buat listing akun game yang akan muncul di marketplace.
+          Buat draft jual akun game yang akan direview admin sebelum muncul di
+          marketplace.
         </p>
       </div>
 
@@ -109,17 +149,12 @@ export default function CreateSellerAccountPage() {
             </select>
           </div>
 
-          <div>
-            <label className="text-sm font-medium text-slate-700">
-              Judul Listing
-            </label>
-            <input
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Contoh: Akun ML Mythic Immortal 200 Skin"
-              className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-4 text-sm outline-none focus:border-blue-500"
-            />
-          </div>
+          <Input
+            label="Judul Akun"
+            value={title}
+            onChange={setTitle}
+            placeholder="Contoh: Akun ML Mythic Immortal 200 Skin"
+          />
 
           <div>
             <label className="text-sm font-medium text-slate-700">
@@ -134,6 +169,34 @@ export default function CreateSellerAccountPage() {
             />
           </div>
 
+          <div>
+            <label className="text-sm font-medium text-slate-700">
+              Gambar Akun yang Ingin Dijual (opsional)
+            </label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-2 text-sm outline-none file:mr-4 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
+            />
+            <p className="mt-2 text-xs text-slate-500">
+              Format gambar: JPG, PNG, WEBP. Maksimal 5MB.
+            </p>
+          </div>
+
+          {imagePreviewUrl && (
+            <div className="rounded-2xl border border-slate-200 p-3">
+              <p className="mb-2 text-xs font-medium text-slate-500">
+                Preview Gambar
+              </p>
+              <img
+                src={imagePreviewUrl}
+                alt="Preview akun"
+                className="h-48 w-full rounded-xl object-cover"
+              />
+            </div>
+          )}
+
           <div className="grid gap-4 md:grid-cols-2">
             <Input
               label="Harga"
@@ -142,14 +205,12 @@ export default function CreateSellerAccountPage() {
               placeholder="750000"
               type="number"
             />
-
             <Input
               label="Rank"
               value={rank}
               onChange={setRank}
               placeholder="Mythic Immortal"
             />
-
             <Input
               label="Level"
               value={level}
@@ -157,7 +218,6 @@ export default function CreateSellerAccountPage() {
               placeholder="89"
               type="number"
             />
-
             <Input
               label="Jumlah Skin"
               value={skins}
@@ -165,7 +225,6 @@ export default function CreateSellerAccountPage() {
               placeholder="200"
               type="number"
             />
-
             <Input
               label="Jumlah Hero / Karakter"
               value={heroes}
@@ -176,8 +235,8 @@ export default function CreateSellerAccountPage() {
           </div>
 
           <div className="rounded-2xl bg-blue-50 p-4 text-sm leading-6 text-blue-800">
-            Untuk tahap development, listing langsung dipublish. Nanti production
-            sebaiknya masuk status pending review dulu dan harus disetujui admin.
+            Draft jual akun baru akan masuk status pending review. Admin perlu
+            mempublish draft sebelum muncul di marketplace.
           </div>
 
           <div className="flex justify-end gap-3">
@@ -187,9 +246,8 @@ export default function CreateSellerAccountPage() {
             >
               Batal
             </Button>
-
             <Button onClick={handleSubmit} disabled={loading}>
-              {loading ? "Menyimpan..." : "Simpan Listing"}
+              {loading ? "Mengupload..." : "Simpan Draft"}
             </Button>
           </div>
         </CardContent>

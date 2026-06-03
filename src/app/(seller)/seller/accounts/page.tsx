@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { useAuth } from "@/components/providers/auth-provider";
-import { getSellerAccountListings, deleteAccountListing } from "@/services/account-listing-service";
+import {
+  deleteAccountListing,
+  getSellerAccountListings,
+} from "@/services/account-listing-service";
 import { AccountListing } from "@/types/account-listing";
-
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -32,15 +34,20 @@ export default function SellerAccountsPage() {
   const [loading, setLoading] = useState(true);
 
   async function loadData() {
-    if (!firebaseUser) return;
+    if (!firebaseUser) {
+      setItems([]);
+      setLoading(false);
+      return;
+    }
 
     try {
       setLoading(true);
+
       const data = await getSellerAccountListings(firebaseUser.uid);
       setItems(data);
     } catch (error) {
       console.error(error);
-      alert("Gagal mengambil listing akun seller");
+      alert("Gagal mengambil data akun seller");
     } finally {
       setLoading(false);
     }
@@ -51,50 +58,52 @@ export default function SellerAccountsPage() {
   }, [firebaseUser]);
 
   async function handleDelete(id: string) {
-  const confirmed = confirm(
-    "Hapus listing ini? Listing akan hilang dari marketplace."
-  );
+    const confirmed = confirm(
+      "Hapus produk akun ini? produk akun akan hilang dari marketplace."
+    );
 
-  if (!confirmed) return;
+    if (!confirmed) return;
 
-  try {
-    await deleteAccountListing(id);
-    await loadData();
-  } catch (error) {
-    console.error(error);
-    alert("Gagal menghapus listing");
+    try {
+      await deleteAccountListing(id);
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      alert("Gagal menghapus data akun");
+    }
   }
-}
+
+  
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
+    <section className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-950">
-            Listing Akun Game
+            Daftar Akun Game
           </h1>
           <p className="mt-2 text-sm text-slate-500">
             Kelola akun game yang kamu jual di marketplace NextPay.
           </p>
         </div>
 
-        <Link href="/seller/accounts/create">
-          <Button>Tambah Listing</Button>
-        </Link>
+        <Button>
+          <Link href="/seller/accounts/create">Jual Akun Game</Link>
+        </Button>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Daftar Listing</CardTitle>
+          <CardTitle>Daftar Akun Game</CardTitle>
         </CardHeader>
 
         <CardContent>
           {loading ? (
-            <p className="text-sm text-slate-500">Memuat listing...</p>
+            <p className="text-sm text-slate-500">Memuat akun...</p>
           ) : items.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center">
+            <div className="rounded-2xl border border-dashed border-slate-200 p-6">
               <h2 className="font-semibold text-slate-950">
-                Belum ada listing
+                Belum ada akun game
               </h2>
               <p className="mt-2 text-sm text-slate-500">
                 Tambahkan akun game pertama untuk mulai berjualan.
@@ -102,11 +111,10 @@ export default function SellerAccountsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-sm">
+              <table className="w-full min-w-[980px] text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-slate-500">
-                    <th className="py-3 pr-4 font-medium">Akun</th>
-                    <th className="py-3 pr-4 font-medium">Game</th>
+                    <th className="py-3 pr-4 font-medium">Akun Game</th>
                     <th className="py-3 pr-4 font-medium">Rank</th>
                     <th className="py-3 pr-4 font-medium">Harga</th>
                     <th className="py-3 pr-4 font-medium">Status</th>
@@ -116,72 +124,93 @@ export default function SellerAccountsPage() {
                 </thead>
 
                 <tbody>
-                  {items.map((item) => (
-                    <tr
-                      key={item.id}
-                      className="border-b border-slate-100 align-top"
-                    >
-                      <td className="py-4 pr-4">
-                        <p className="font-medium text-slate-950">
-                          {item.title}
-                        </p>
-                        <p className="mt-1 max-w-xs text-xs leading-5 text-slate-500">
-                          {item.description}
-                        </p>
-                      </td>
+                  {items.map((item) => {
+                    const imageUrl = item.images?.[0];
+                    const isLocked = item.status === "reserved" || item.status === "sold";
+                    return (
+                      <tr
+                        key={item.id}
+                        className="border-b border-slate-100 align-top"
+                      >
+                        <td className="py-4 pr-4">
+                          <div className="flex gap-3">
+                            {imageUrl ? (
+                              <img
+                                src={imageUrl}
+                                alt={item.title}
+                                className="h-16 w-20 rounded-xl object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-16 w-20 items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-400">
+                                No Image
+                              </div>
+                            )}
 
-                      <td className="py-4 pr-4">
-                        {formatGameName(item.game)}
-                      </td>
-
-                      <td className="py-4 pr-4">{item.rank || "-"}</td>
-
-                      <td className="py-4 pr-4 font-semibold text-slate-950">
-                        {formatRupiah(item.price)}
-                      </td>
-
-                      <td className="py-4 pr-4">
-                        <span className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-medium capitalize text-blue-700">
-                          {item.status.replaceAll("_", " ")}
-                        </span>
-                      </td>
-
-                      <td className="py-4 pr-4">
-                        <span
-                          className={[
-                            "inline-flex rounded-full px-3 py-1 text-xs font-medium",
-                            item.verified
-                              ? "bg-green-50 text-green-700"
-                              : "bg-slate-100 text-slate-500",
-                          ].join(" ")}
-                        >
-                          {item.verified ? "Verified" : "Unverified"}
-                        </span>
-                      </td>
-
-                      <td className="py-4 pr-4">
-                          <div className="flex gap-2">
-                            <Link href={`/akun-ml/${item.id}`}>
-                                <Button variant="secondary">Lihat</Button>
-                            </Link>
-
-                            <Link href={`/seller/accounts/${item.id}/edit`}>
-                                <Button>Edit</Button>
-                            </Link>
-
-                            <Button variant="danger" onClick={() => handleDelete(item.id)}>
-                                Hapus
-                            </Button>
+                            <div>
+                              <p className="font-medium text-slate-950">
+                                {item.title}
+                              </p>
+                              <p className="mt-1 line-clamp-2 max-w-md text-xs text-slate-500">
+                                {item.description}
+                              </p>
+                              <p className="mt-1 text-xs text-blue-600">
+                                {formatGameName(item.game)}
+                              </p>
                             </div>
-                      </td>
-                    </tr>
-                  ))}
+                          </div>
+                        </td>
+
+                        <td className="py-4 pr-4">{item.rank || "-"}</td>
+
+                        <td className="py-4 pr-4 font-semibold text-slate-950">
+                          {formatRupiah(item.price)}
+                        </td>
+
+                        <td className="py-4 pr-4 capitalize">
+                          {item.status.replaceAll("_", " ")}
+                        </td>
+
+                        <td className="py-4 pr-4">
+                          {item.verified ? "Verified" : "Unverified"}
+                        </td>
+
+                        <td className="py-4 pr-4">
+                          <div className="flex flex-wrap gap-2">
+                            <Button variant="secondary">
+                              <Link href={`/akun-ml/${item.id}`}>Lihat</Link>
+                            </Button>
+
+                             {!isLocked ? (
+                              <>
+                                <Button variant="secondary">
+                                  <Link href={`/seller/accounts/${item.id}/edit`}>
+                                    Edit
+                                  </Link>
+                                </Button>
+
+                                <Button
+                                  variant="danger"
+                                  onClick={() => handleDelete(item.id)}
+                                >
+                                  Hapus
+                                </Button>
+                              </>
+                            ) : (
+                              <span className="text-xs text-slate-500">
+                                Terkunci transaksi
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
         </CardContent>
       </Card>
-    </div>
+    </section>
   );
 }

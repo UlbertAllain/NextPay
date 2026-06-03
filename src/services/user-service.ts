@@ -1,23 +1,91 @@
 import {
   collection,
+  doc,
+  getDoc,
   getDocs,
   orderBy,
   query,
+  serverTimestamp,
+  updateDoc,
   where,
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase/client";
 import { COLLECTIONS } from "@/constants/collections";
-import { AppUser } from "@/types/user";
 
-export type UserWithId = AppUser & {
+export type UserRole = "user" | "seller" | "admin" | "super_admin";
+
+export type UserProfile = {
   id: string;
+  name?: string | null;
+  displayName?: string | null;
+  email?: string | null;
+  role?: UserRole | null;
+  balance?: number;
+  photoURL?: string | null;
+  bio?: string | null;
+  createdAt?: unknown;
+  updatedAt?: unknown;
 };
 
-export async function getSellers() {
+export async function getUserById(userId: string) {
+  const snapshot = await getDoc(doc(db, COLLECTIONS.USERS, userId));
+
+  if (!snapshot.exists()) {
+    return null;
+  }
+
+  return {
+    id: snapshot.id,
+    ...snapshot.data(),
+  } as UserProfile;
+}
+
+export async function getPublicUserProfile(userId: string) {
+  const user = await getUserById(userId);
+
+  if (!user) {
+    return null;
+  }
+
+  return {
+    id: user.id,
+    name: user.name ?? user.displayName ?? null,
+    displayName: user.displayName ?? user.name ?? null,
+    email: user.email ?? null,
+    role: user.role ?? null,
+    photoURL: user.photoURL ?? null,
+    bio: user.bio ?? null,
+    createdAt: user.createdAt ?? null,
+    updatedAt: user.updatedAt ?? null,
+  } as UserProfile;
+}
+
+export async function updateUserProfile(
+  userId: string,
+  input: {
+    name?: string;
+    displayName?: string;
+    photoURL?: string;
+    bio?: string;
+  }
+) {
+  await updateDoc(doc(db, COLLECTIONS.USERS, userId), {
+    ...input,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function updateUserRole(userId: string, role: UserRole) {
+  await updateDoc(doc(db, COLLECTIONS.USERS, userId), {
+    role,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function getAllUsers() {
   const q = query(
     collection(db, COLLECTIONS.USERS),
-    where("role", "==", "seller"),
     orderBy("createdAt", "desc")
   );
 
@@ -26,5 +94,20 @@ export async function getSellers() {
   return snapshot.docs.map((document) => ({
     id: document.id,
     ...document.data(),
-  })) as UserWithId[];
+  })) as UserProfile[];
+}
+
+export async function getUsersByRole(role: UserRole) {
+  const q = query(
+    collection(db, COLLECTIONS.USERS),
+    where("role", "==", role),
+    orderBy("createdAt", "desc")
+  );
+
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs.map((document) => ({
+    id: document.id,
+    ...document.data(),
+  })) as UserProfile[];
 }

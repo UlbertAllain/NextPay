@@ -8,4 +8,7 @@ export const COLLECTIONS = {
   WITHDRAWALS: "withdrawals",
   AUDIT_LOGS: "audit_logs",
   ACCOUNT_LISTINGS: "account_listings",
+  WALLET_TRANSACTIONS: "wallet_transactions",
+  SELLER_REVIEWS: "seller_reviews",
+  NOTIFICATIONS: "notifications",
 } as const;

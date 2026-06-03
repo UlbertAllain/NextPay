@@ -1,11 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { useAuth } from "@/components/providers/auth-provider";
-import { getAccountListingById } from "@/services/account-listing-service";
+import { getPublishedAccountListingById } from "@/services/account-listing-service";
 import { createRekberTransaction } from "@/services/rekber-service";
+import {
+  getPublicUserProfile,
+  UserProfile,
+} from "@/services/user-service";
 import { AccountListing } from "@/types/account-listing";
 import { Button } from "@/components/ui/button";
 import {
@@ -80,6 +85,7 @@ export default function AccountListingDetailPage() {
   const { firebaseUser } = useAuth();
 
   const [item, setItem] = useState<AccountListing | null>(null);
+  const [seller, setSeller] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
 
@@ -89,8 +95,15 @@ export default function AccountListingDetailPage() {
     try {
       setLoading(true);
 
-      const data = await getAccountListingById(params.id);
-      setItem(data);
+      const listingData = await getPublishedAccountListingById(params.id);
+      setItem(listingData);
+
+      if (listingData?.sellerId) {
+        const sellerData = await getPublicUserProfile(listingData.sellerId);
+        setSeller(sellerData);
+      } else {
+        setSeller(null);
+      }
     } catch (error) {
       console.error(error);
       alert("Gagal mengambil detail akun");
@@ -112,12 +125,12 @@ export default function AccountListingDetailPage() {
     if (!item) return;
 
     if (item.status !== "published") {
-      alert("Listing ini tidak tersedia untuk dibeli");
+      alert("Akun ini tidak tersedia untuk dibeli");
       return;
     }
 
     if (item.sellerId === firebaseUser.uid) {
-      alert("Kamu tidak bisa membeli listing milik sendiri");
+      alert("Kamu tidak bisa membeli akun milik sendiri");
       return;
     }
 
@@ -129,7 +142,7 @@ export default function AccountListingDetailPage() {
         sellerId: item.sellerId,
         sellerContact: `internal-seller:${item.sellerId}`,
         itemName: item.title,
-        itemDescription: `Pembelian listing akun ${formatGameName(
+        itemDescription: `Pembelian akun ${formatGameName(
           item.game
         )}.\n${item.description}`,
         amount: item.price,
@@ -158,7 +171,7 @@ export default function AccountListingDetailPage() {
           Akun tidak ditemukan
         </h1>
         <p className="text-sm text-slate-500">
-          Listing akun ini tidak tersedia atau sudah dihapus.
+          Akun ini tidak tersedia atau sudah dihapus.
         </p>
       </div>
     );
@@ -168,6 +181,22 @@ export default function AccountListingDetailPage() {
   const isAvailable = item.status === "published";
   const isOwnListing = firebaseUser?.uid === item.sellerId;
   const isBuyDisabled = checkoutLoading || !isAvailable || isOwnListing;
+  const sellerName = seller?.name || seller?.displayName || seller?.email || item.sellerId;
+  const canViewHiddenListing =
+  isAvailable || isOwnListing;
+
+  if (!canViewHiddenListing) {
+  return (
+    <div className="space-y-2">
+      <h1 className="text-2xl font-bold text-slate-950">
+        Akun tidak tersedia
+      </h1>
+      <p className="text-sm text-slate-500">
+        Akun ini sedang tidak tersedia, sudah disembunyikan, atau sudah tidak dijual.
+      </p>
+    </div>
+  );
+}
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
@@ -181,13 +210,36 @@ export default function AccountListingDetailPage() {
           </CardHeader>
 
           <CardContent className="space-y-6">
-            <div className="aspect-video rounded-2xl bg-slate-100" />
+            {item.images?.[0] ? (
+              <img
+                src={item.images[0]}
+                alt={item.title}
+                className="aspect-video w-full rounded-2xl object-cover"
+              />
+            ) : (
+              <div className="flex aspect-video items-center justify-center rounded-2xl bg-slate-100 text-sm text-slate-400">
+                No Image
+              </div>
+            )}
 
             <div className="grid gap-4 sm:grid-cols-4">
               <Info label="Rank" value={item.rank || "-"} />
               <Info label="Level" value={String(item.level ?? "-")} />
               <Info label="Skin" value={String(item.skins ?? "-")} />
               <Info label="Hero" value={String(item.heroes ?? "-")} />
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 p-4">
+              <p className="text-sm text-slate-500">Seller</p>
+              <p className="mt-1 font-semibold text-slate-950">
+                {sellerName}
+              </p>
+              <Link
+                href={`/seller-profile/${item.sellerId}`}
+                className="mt-3 inline-flex text-sm font-medium text-blue-600 hover:text-blue-700"
+              >
+                Lihat profil seller
+              </Link>
             </div>
 
             <div>
@@ -218,7 +270,7 @@ export default function AccountListingDetailPage() {
 
         <CardContent className="space-y-5">
           <div>
-            <p className="text-sm text-slate-500">Status Listing</p>
+            <p className="text-sm text-slate-500">Status Akun</p>
             <span
               className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-medium capitalize ${getStatusBadgeClass(
                 item.status
@@ -260,13 +312,13 @@ export default function AccountListingDetailPage() {
 
           {!isAvailable && (
             <p className="rounded-xl bg-orange-50 p-3 text-sm text-orange-700">
-              Listing ini sedang tidak tersedia untuk dibeli.
+              Akun ini sedang tidak tersedia untuk dibeli.
             </p>
           )}
 
           {isOwnListing && (
             <p className="rounded-xl bg-slate-100 p-3 text-sm text-slate-600">
-              Kamu tidak bisa membeli listing milik sendiri.
+              Kamu tidak bisa membeli akun milik sendiri.
             </p>
           )}
 

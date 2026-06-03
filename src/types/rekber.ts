@@ -30,4 +30,6 @@ export type RekberTransaction = {
   disputedAt?: unknown;
   refundedAt?: unknown;
   releasedByAdminAt?: unknown;
+  expiredAt?: unknown;
+cancelledAt?: unknown;
 };
